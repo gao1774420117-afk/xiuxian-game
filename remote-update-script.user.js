@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         远程更新与实用工具助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.0
+// @version      3.1.1
 // @description  Premium 级全能助手 — 专业仪表盘·深度监控·超级工具集·GitHub 自动同步 (v3.0 旗舰版)
 // @author       gao1774420117
 // @match        *://*/*
@@ -34,7 +34,7 @@
         UPDATE_URL: 'https://github.com/gao1774420117-afk/xiuxian-game/raw/refs/heads/main/remote-update-script.user.js',
         REPO_URL: 'https://github.com/gao1774420117-afk/xiuxian-game',
         VERSION: GM_info.script.version,
-        BUILD: '20260403-V3-FLAGSHIP',
+        BUILD: '20260403-V3.1-PRO',
         CHANNEL: 'STABLE',
         AUTHOR: 'gao1774420117',
         IS_MIN: GM_getValue('is_minimized', false),
@@ -44,8 +44,8 @@
         TAB_MODE: GM_getValue('tab_mode', 'both'), // icon, text, both
         POS: GM_getValue('pos', { x: 28, y: 28, from: 'bottom-right' }),
         CHANGELOG: [
-            { v: '3.0.0', d: '2026/04/03', tag: 'MAJOR',  c: '旗舰版 50+ 功能达成：集成 Chart.js 监控、安全审计、数据导入导出、截图、取色器、跨域同步。' },
-            { v: '2.3.0', d: '2026/04/03', tag: 'UI',    c: 'UI 全面升级：Aurora 流光背景、Tab 滑动指示、多主题切换系统、玻璃拟态动画。' }
+            { v: '3.1.1', d: '2026/04/03', tag: 'HOTFIX', c: '热修复：恢复随手贴拖动功能（注入丢失函数）、优化 JSON 剪贴板识别、修复页签切换动画中断。' },
+            { v: '3.1.0', d: '2026/04/03', tag: 'STABLE', c: '旗舰增强：核心版本算法修复、21项全量工具集合、动态 Monitor 监控图表适配。' }
         ]
     };
 
@@ -394,10 +394,17 @@
         }, '取色器'),
 
         // [6] JSON美化
-        json: safe(() => {
-            const s = window.getSelection().toString();
-            if(!s) return Notify.show('请先选中 JSON 文本', 'warning');
-            try { GM_setClipboard(JSON.stringify(JSON.parse(s),null,4)); Notify.show('{} JSON 已格式化并复制', 'success'); } catch(e){ Notify.show('无效的 JSON 格式', 'error'); }
+        json: safe(async () => {
+            let s = window.getSelection().toString();
+            if (!s) {
+                try { s = await navigator.clipboard.readText(); Notify.show('检测到未选中，自动从剪贴板试读...', 'info'); } 
+                catch(e) { return Notify.show('请选中 JSON 文本或授权剪贴板权限', 'warning'); }
+            }
+            if(!s) return Notify.show('无有效 JSON 输入', 'warning');
+            try { 
+                const res = JSON.stringify(JSON.parse(s),null,4);
+                GM_setClipboard(res); Notify.show('{} JSON 已格式化并存入剪贴板', 'success'); 
+            } catch(e){ Notify.show('❌ 无法解析，请检查 JSON 格式', 'error'); }
         }, 'JSON美化'),
 
         // [7] 网速测试
@@ -705,14 +712,21 @@
             Notify.show(`🎨 已切换至 ${next.toUpperCase()} 主题`, 'success');
         };
         document.querySelectorAll('.htab').forEach(t => t.onclick = () => {
-            const tabs = document.querySelectorAll('.htab');
-            const panes = document.querySelectorAll('.hpane');
+            const tabs = document.querySelectorAll('.htab'), panes = document.querySelectorAll('.hpane');
+            const targetPane = document.getElementById('pane-' + t.dataset.p);
+            if (targetPane.classList.contains('on')) return;
+
             tabs.forEach(x => x.classList.remove('on'));
             t.classList.add('on');
-            panes.forEach(p => { p.classList.remove('on'); });
-            const activePane = document.getElementById('pane-' + t.dataset.p);
-            activePane.style.display = 'block';
-            setTimeout(() => activePane.classList.add('on'), 10);
+
+            const currentPane = document.querySelector('.hpane.on');
+            if (currentPane) {
+                currentPane.classList.remove('on');
+                setTimeout(() => { currentPane.style.display = 'none'; }, 300); // 匹配 CSS transition
+            }
+
+            targetPane.style.display = 'block';
+            setTimeout(() => { targetPane.classList.add('on'); }, 10);
             
             const ind = document.getElementById('hap-tab-ind');
             ind.style.width = t.offsetWidth + 'px';
@@ -759,12 +773,33 @@
     }, '图表更新理论');
 
     const checkUpdate = safe((manual=false) => {
+        const isNewer = (v1, v2) => {
+            const a = v1.split('.').map(Number), b = v2.split('.').map(Number);
+            for (let i = 0; i < Math.max(a.length, b.length); i++) {
+                if ((a[i] || 0) > (b[i] || 0)) return true;
+                if ((a[i] || 0) < (b[i] || 0)) return false;
+            }
+            return false;
+        };
+
         updateStatusBar('wait', '正在检查更新...');
         GM_xmlhttpRequest({
             method:'GET', url:CONFIG.UPDATE_URL+'?t='+Date.now(), onload: res => {
                 const m = res.responseText.match(/@version\s+([\d.]+)/);
-                if (m && m[1]!==CONFIG.VERSION) { updateStatusBar('bad', '有新版本 v'+m[1]); if(confirm('发现新版本 v'+m[1]+'，更新旗舰版？')) GM_openInTab(CONFIG.UPDATE_URL); }
-                else { updateStatusBar('ok', '旗舰版已是最新'); if(manual) Notify.show('旗舰版已是最新', 'success'); }
+                if (m && isNewer(m[1], CONFIG.VERSION)) { 
+                    updateStatusBar('bad', '发现新版本 v'+m[1]); 
+                    if(confirm(`发现新版本 v${m[1]}，是否更新至旗舰版？`)) GM_openInTab(CONFIG.UPDATE_URL); 
+                } else if (m) {
+                    updateStatusBar('ok', '旗舰版已是最新'); 
+                    if(manual) Notify.show('当前已是最新旗舰版 (v' + CONFIG.VERSION + ')', 'success'); 
+                } else {
+                    updateStatusBar('unk', '版本检测失败');
+                    if(manual) Notify.show('无法获取远程版本信息', 'error');
+                }
+            },
+            onerror: () => {
+                updateStatusBar('bad', '网络请求失败');
+                if(manual) Notify.show('连不上更新服务器，请检查网络', 'error');
             }
         });
     }, '更新检查');
@@ -785,6 +820,15 @@
             updateCharts();
         }
     }, 2000);
+
+    const makeDraggable = (el, handle) => {
+        let ox, oy, isDown = false;
+        handle.onmousedown = e => {
+            isDown = true; ox = e.clientX - el.offsetLeft; oy = e.clientY - el.offsetTop;
+            document.onmousemove = ev => { if(isDown) { el.style.left = (ev.clientX - ox) + 'px'; el.style.top = (ev.clientY - oy) + 'px'; } };
+            document.onmouseup = () => { isDown = false; document.onmousemove = null; };
+        };
+    };
 
     const init = () => { buildUI(); setTimeout(() => checkUpdate(false), 2000); };
     if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
