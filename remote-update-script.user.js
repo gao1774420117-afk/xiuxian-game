@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         远程更新与实用工具助手
 // @namespace    http://tampermonkey.net/
-// @version      1.4.0
-// @description  支持远程 GitHub 更新、内置自定义 UI 通知、实时时钟、秒表及完整更新日志
+// @version      1.4.1
+// @description  支持远程 GitHub 更新、内置自定义 UI 通知、实时时钟、秒表及完整更新日志，支持更新后自动清理缓存刷新
 // @author       YourName
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
@@ -27,10 +27,10 @@
         AUTO_CHECK_INTERVAL: 1000 * 60 * 60 * 6,
         IS_MINIMIZED: GM_getValue('is_minimized', false),
         CHANGELOG: [
+            "v1.4.1: 优化更新逻辑，实现更新完成后自动刷新页面并清理缓存。",
             "v1.4.0: 新增实时时钟与秒表工具，增加更新日志展示板块。",
             "v1.3.1: 修复 GitHub 远程更新检测失败问题，增强抗缓存机制。",
-            "v1.3.0: 移除系统原生通知，改用自定义 UI 通知悬浮框，新增密码生成与链接采集工具。",
-            "v1.2.0: 脚本全界面汉化并优化 UI 设计。"
+            "v1.3.0: 移除系统原生通知，改用自定义 UI 通知悬浮框，新增密码生成与链接采集工具。"
         ]
     };
 
@@ -263,10 +263,42 @@
         } else if (el) el.remove();
     }
 
+    // --- 入口初始化 ---
     function init() {
-        createUI(); applyDarkMode(GM_getValue('dark_mode', false));
+        // 1. 更新后自动刷新检测
+        const lastKnownV = GM_getValue('last_known_version', null);
+        const currentV = CONFIG.CURRENT_VERSION;
+
+        if (lastKnownV && isNewerVersion(currentV, lastKnownV)) {
+            // 检测到版本提升，说明刚刚完成了更新安装
+            Notify.show(`🎉 更新成功！版本已升至 v${currentV}，正在执行内存清理并刷新...`, 'success', 5000);
+            GM_setValue('last_known_version', currentV);
+            
+            // 延迟刷新以确保用户看到通知，并强制清理缓存
+            setTimeout(() => {
+                location.reload(true); 
+            }, 1500);
+            return; // 刷新期间不再继续后续逻辑
+        }
+        
+        // 保存当前版本为“已知版本”
+        GM_setValue('last_known_version', currentV);
+
+        // 2. 正常初始化
+        createUI();
+        applyDarkMode(GM_getValue('dark_mode', false));
+        
+        // 注册油猴菜单
+        GM_registerMenuCommand('🔄 强制检查更新', () => checkUpdate(true));
+        GM_registerMenuCommand('🔧 重置控制台', () => {
+            GM_setValue('is_minimized', false);
+            location.reload();
+        });
+
+        // 启动自动更新检测
         checkUpdate(false);
     }
+
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
 })();
