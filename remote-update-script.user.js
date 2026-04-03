@@ -13,8 +13,8 @@
 // @grant        GM_notification
 // @grant        GM_openInTab
 // @connect      raw.githubusercontent.com
-// @updateURL    https://raw.githubusercontent.com/[YOUR_GITHUB_USERNAME]/[YOUR_REPO_NAME]/main/remote-update-script.user.js
-// @downloadURL  https://raw.githubusercontent.com/[YOUR_GITHUB_USERNAME]/[YOUR_REPO_NAME]/main/remote-update-script.user.js
+// @updateURL    https://github.com/gao1774420117-afk/xiuxian-game/raw/refs/heads/main/remote-update-script.user.js
+// @downloadURL  https://github.com/gao1774420117-afk/xiuxian-game/raw/refs/heads/main/remote-update-script.user.js
 // ==/UserScript==
 
 (function() {
@@ -22,7 +22,7 @@
 
     // --- Configuration & Constants ---
     const CONFIG = {
-        UPDATE_URL: 'https://raw.githubusercontent.com/[YOUR_GITHUB_USERNAME]/[YOUR_REPO_NAME]/main/remote-update-script.user.js',
+        UPDATE_URL: 'https://github.com/gao1774420117-afk/xiuxian-game/raw/refs/heads/main/remote-update-script.user.js',
         CURRENT_VERSION: GM_info.script.version,
         IS_MINIMIZED: GM_getValue('is_minimized', false)
     };
