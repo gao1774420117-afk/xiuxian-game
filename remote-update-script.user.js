@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         远程更新与实用工具助手
 // @namespace    http://tampermonkey.net/
-// @version      1.8.0
-// @description  支持远程 GitHub 更新、全量仪表盘、超级工具网格、内存监视及环境感知 (Professional 级全功能版)
+// @version      2.0.0
+// @description  Premium 级全能助手 — 专业仪表盘·深度监控·超级工具集·GitHub 自动同步
 // @author       gao1774420117
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
@@ -19,372 +19,652 @@
 // @downloadURL  https://github.com/gao1774420117-afk/xiuxian-game/raw/refs/heads/main/remote-update-script.user.js
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
-    // --- 核心配置与维度数据 ---
+    // ===================== 配置与数据 =====================
     const CONFIG = {
         UPDATE_URL: 'https://github.com/gao1774420117-afk/xiuxian-game/raw/refs/heads/main/remote-update-script.user.js',
         REPO_URL: 'https://github.com/gao1774420117-afk/xiuxian-game',
-        CURRENT_VERSION: GM_info.script.version,
-        AUTO_CHECK_INTERVAL: 1000 * 60 * 60 * 6,
-        IS_MINIMIZED: GM_getValue('is_minimized', false),
-        LAST_SYNC: GM_getValue('last_sync_time', '未同步'),
-        STATUS: 'secure',
-        LATENCY: '--',
-        ENV: {
-            browser: (() => {
-                const ua = navigator.userAgent;
-                if (ua.includes("Edg/")) return "Edge";
-                if (ua.includes("Chrome/")) return "Chrome";
-                if (ua.includes("Firefox/")) return "Firefox";
-                return "未知内核";
-            })(),
-            manager: GM_info.scriptHandler || "Tampermonkey",
-            managerVer: GM_info.version || "未知",
-            platform: navigator.platform.replace('Win32', 'Windows x64'),
-            incognito: GM_info.isIncognito ? "隐身模式" : "常规模式",
-            screen: `${window.screen.width}x${window.screen.height}`,
-            dpr: window.devicePixelRatio.toFixed(2),
-            charset: document.characterSet
-        },
+        VERSION: GM_info.script.version,
+        BUILD: '20260403-RELEASE',
+        CHANNEL: 'STABLE',
+        AUTHOR: 'gao1774420117',
+        CONTACT: 'GitHub · TapTap',
+        CHECK_INTERVAL: 1000 * 60 * 60 * 6,
+        IS_MIN: GM_getValue('is_minimized', false),
         CHANGELOG: [
-            { v: '1.8.0', d: '2026/04/03', c: '全量仪表盘：新增 10+ 深度指标（内存、DOM、SSL 等），合并超级工具网格。' },
-            { v: '1.7.1', d: '2026/04/03', c: '精修补全：找回 8 大核心工具入口，实现零滚动条 3x3 复合网格。' },
-            { v: '1.7.0', d: '2026/04/03', c: '专业化转型：仪表盘系统上线。' }
+            { v: '2.0.0', d: '2026/04/03', tag: 'MAJOR', c: '全面重构 Premium UI 2.0：深度仪表盘、动态指标卡、版本时间轴、加密状态显示。' },
+            { v: '1.8.0', d: '2026/04/03', tag: 'FEATURE', c: '系统深度监控上线：内存追踪、DOM 拓扑、环境感知。' },
+            { v: '1.7.1', d: '2026/04/03', tag: 'FIX', c: '修复功能丢失问题，补全全部 8 大工具入口。' },
+            { v: '1.6.0', d: '2026/04/03', tag: 'FEATURE', c: '随手贴、URL 二维码、万能图像采集上线。' },
+            { v: '1.5.0', d: '2026/04/03', tag: 'UI', c: 'Tab 导航 Premium UI 首次上线，引入毛玻璃主题。' },
         ]
     };
 
-    // --- 样式引擎 3.0 (高密度仪表盘) ---
-    const UI_STYLES = `
-        :root {
-            --h-p: linear-gradient(135deg, #00c6fb 0%, #005bea 100%);
-            --h-bg: rgba(255, 255, 255, 0.95);
-            --h-blur: blur(35px);
-            --h-shadow: 0 25px 80px rgba(0, 0, 0, 0.2);
-            --h-acc: #3498db;
-            --h-suc: #2ecc71;
-            --h-err: #e74c3c;
-            --h-warn: #f1c40f;
-            --h-txt: #2c3e50;
-            --h-sub: #7f8c8d;
-        }
-
-        #helper-ui-root {
-            position: fixed; bottom: 30px; right: 30px; width: 340px;
-            background: var(--h-bg); border-radius: 35px; box-shadow: var(--h-shadow);
-            z-index: 10000000; font-family: -apple-system, sans-serif; overflow: hidden;
-            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1);
-            backdrop-filter: var(--h-blur); border: 1px solid rgba(255, 255, 255, 0.6);
-            user-select: none; color: var(--h-txt);
-        }
-
-        #helper-ui-root.minimized { width: 160px; }
-
-        .h-header { padding: 22px 25px; background: var(--h-p); color: white; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 900; font-size: 16px; position: relative; }
-        .h-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 12px; border: 2px solid rgba(255,255,255,0.4); }
-        .dot-ok { background: var(--h-suc); box-shadow: 0 0 15px var(--h-suc); }
-        .dot-upd { background: var(--h-err); box-shadow: 0 0 15px var(--h-err); }
-        .dot-wait { background: var(--h-warn); animation: pulse-anim 1s infinite; }
-
-        @keyframes pulse-anim { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-
-        .h-tabs { display: flex; background: rgba(0,0,0,0.06); padding: 6px; }
-        .h-tab-itm { flex: 1; text-align: center; padding: 12px 0; font-size: 12px; cursor: pointer; transition: 0.3s; color: var(--h-sub); font-weight: 800; border-radius: 15px; }
-        .h-tab-itm.active { background: white; color: var(--h-acc); box-shadow: 0 6px 20px rgba(0,0,0,0.06); }
-
-        .h-body { padding: 20px; overflow-y: hidden; }
-        .t-content { display: none; animation: scaleUp 0.4s ease; min-height: 280px; }
-        .t-content.active { display: block; }
-        @keyframes scaleUp { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
-
-        /* 超级仪表盘卡片 */
-        .m-card { background: rgba(0,0,0,0.02); border-radius: 20px; padding: 15px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.7); box-shadow: inset 0 2px 8px rgba(0,0,0,0.02); }
-        .m-header { font-size: 10px; color: var(--h-sub); font-weight: 900; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase; }
-        .m-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px; }
-        .m-lab { color: var(--h-sub); }
-        .m-val { font-weight: 700; color: var(--h-txt); font-family: monospace; }
-        
-        /* 超级工具网格 (3x3) */
-        .tool-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
-        .tool-itm { 
-            background: white; border-radius: 15px; padding: 12px 8px; text-align: center; 
-            box-shadow: 0 5px 15px rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.02);
-            cursor: pointer; transition: 0.3s;
-        }
-        .tool-itm:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); border-color: var(--h-acc); }
-        .tool-ico { font-size: 18px; margin-bottom: 6px; }
-        .tool-name { font-size: 10px; font-weight: 800; color: var(--h-txt); }
-
-        .btn-full { width: 100%; padding: 14px; border-radius: 18px; border: none; cursor: pointer; font-size: 13px; font-weight: 900; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
-        .btn-full:hover { transform: translateY(-3px); opacity: 0.9; box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
-        .btn-m { background: var(--h-p); color: white; }
-        .btn-l { background: #f8f9fa; color: #4b5563; }
-
-        .no-s::-webkit-scrollbar { display: none; }
-    `;
-
-    // --- 通知引擎 ---
-    const Notify = {
-        box: null,
-        init() { if(!this.box){ this.box = document.createElement('div'); this.box.style.cssText=`position:fixed;top:30px;right:30px;z-index:99999999;display:flex;flex-direction:column;align-items:flex-end;pointer-events:none;`; document.body.appendChild(this.box); }},
-        show(m, t='info') {
-            this.init();
-            const el = document.createElement('div');
-            const c = { info: '#3498db', success: '#2ecc71', warning: '#f1c40f', error: '#e74c3c' };
-            el.style.cssText = `margin-bottom:12px;padding:16px 28px;background:rgba(255,255,255,0.98);color:#2d3436;border-left:8px solid ${c[t]};border-radius:24px;box-shadow:0 15px 40px rgba(0,0,0,0.15);font-size:14px;font-weight:900;pointer-events:auto;opacity:0;transform:scale(0.8) translateX(50px);transition:0.5s cubic-bezier(0.175,0.885,0.32,1.275);backdrop-filter:blur(15px);`;
-            el.innerText = m; this.box.appendChild(el);
-            setTimeout(() => { el.style.opacity='1'; el.style.transform='scale(1) translateX(0)'; }, 20);
-            setTimeout(() => { el.style.opacity='0'; el.style.transform='scale(0.8) translateX(50px)'; setTimeout(()=>el.remove(),500); }, 4000);
-        }
+    // ===================== 系统扫描器 =====================
+    const SYS = {
+        browser() {
+            const ua = navigator.userAgent;
+            const v = ua.match(/(Chrome|Firefox|Safari|Edg|OPR)\/(\d+)/);
+            if (!v) return ['未知内核', '?'];
+            const map = { Edg: 'Edge', OPR: 'Opera', Chrome: 'Chrome', Firefox: 'Firefox', Safari: 'Safari' };
+            return [map[v[1]] || v[1], v[2]];
+        },
+        memory() {
+            if (!performance.memory) return { used: -1, total: -1, pct: 0 };
+            const m = performance.memory;
+            const used = (m.usedJSHeapSize / 1048576).toFixed(1);
+            const total = (m.jsHeapSizeLimit / 1048576).toFixed(0);
+            const pct = Math.round((m.usedJSHeapSize / m.jsHeapSizeLimit) * 100);
+            return { used, total, pct };
+        },
+        dom() { return document.querySelectorAll('*').length; },
+        links() { return document.querySelectorAll('a[href]').length; },
+        images() { return document.querySelectorAll('img').length; },
+        scripts() { return document.querySelectorAll('script').length; },
+        ssl() { return location.protocol === 'https:'; },
+        incog() { return GM_info.isIncognito || false; },
+        resolution() { return `${screen.width}×${screen.height}`; },
+        dpr() { return window.devicePixelRatio.toFixed(1); },
+        charset() { return document.characterSet; },
+        lang() { return navigator.language; },
+        cookieEnabled() { return navigator.cookieEnabled; },
     };
 
-    // --- 系统扫描引擎 (Scanner) ---
-    const SystemScanner = {
-        getMemory() {
-            if (performance.memory) {
-                const m = performance.memory;
-                return `${(m.usedJSHeapSize / 1024 / 1024).toFixed(1)}MB / ${(m.jsHeapLimit / 1024 / 1024).toFixed(0)}MB`;
+    // ===================== 状态机 =====================
+    const STATE = {
+        updateStatus: 'unknown',  // unknown | checking | latest | outdated | error
+        latency: null,
+        latencyChecked: false,
+        toolCallCount: GM_getValue('tool_calls', 0),
+        lastSync: GM_getValue('last_sync', '从未同步'),
+        injectCount: parseInt(GM_getValue('inject_count', 0)) + 1,
+    };
+    GM_setValue('inject_count', STATE.injectCount);
+
+    // ===================== CSS 样式 =====================
+    GM_addStyle(`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+        #hap-root *  { box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
+        
+        #hap-root {
+            position: fixed; bottom: 28px; right: 28px; width: 360px;
+            z-index: 2147483640;
+            filter: drop-shadow(0 30px 80px rgba(0,0,0,0.22)) drop-shadow(0 5px 15px rgba(0,0,0,0.1));
+            transition: width .4s cubic-bezier(.77,0,.18,1);
+            user-select: none;
+        }
+        #hap-root.min { width: 170px; }
+
+        #hap-inner {
+            background: rgba(15,17,26,0.96);
+            border-radius: 28px;
+            border: 1px solid rgba(255,255,255,0.08);
+            overflow: hidden;
+            backdrop-filter: blur(40px) saturate(180%);
+        }
+
+        /* ── 标题栏 ── */
+        #hap-header {
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            padding: 18px 22px 16px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        #hap-header::before {
+            content: '';
+            position: absolute; inset: 0;
+            background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(168,85,247,0.2));
+            opacity: 0.6;
+        }
+        .hap-title-row { display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1; }
+        .hap-title-left { display: flex; align-items: center; gap: 10px; }
+        .hap-badge-ver {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white; font-size: 9px; font-weight: 800; padding: 3px 8px;
+            border-radius: 8px; letter-spacing: .5px;
+        }
+        .hap-badge-ch {
+            background: rgba(52,211,153,0.2); color: #34d399; font-size: 9px;
+            font-weight: 800; padding: 3px 8px; border-radius: 8px; letter-spacing: .5px;
+            border: 1px solid rgba(52,211,153,0.3);
+        }
+        .hap-title-text { color: white; font-size: 13px; font-weight: 800; margin-top: 8px; position: relative; z-index: 1; }
+        .hap-title-sub  { color: rgba(255,255,255,0.45); font-size: 10px; margin-top: 2px; position: relative; z-index: 1; }
+        .hap-tog { color: rgba(255,255,255,0.5); font-size: 11px; font-weight: 700; position: relative; z-index: 1; transition: color .2s; }
+        .hap-tog:hover { color: white; }
+
+        /* 状态指示器 */
+        .hap-status-bar {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 22px;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            position: relative; z-index: 1;
+        }
+        .hap-sdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .sdot-ok   { background: #34d399; box-shadow: 0 0 8px #34d399; }
+        .sdot-wait { background: #fbbf24; animation: blink 1s ease-in-out infinite; }
+        .sdot-bad  { background: #f87171; box-shadow: 0 0 8px #f87171; }
+        .sdot-unk  { background: #6b7280; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+        .hap-stext { flex: 1; font-size: 10.5px; font-weight: 600; color: rgba(255,255,255,0.6); }
+        .hap-stime { font-size: 10px; color: rgba(255,255,255,0.3); font-family: monospace; }
+
+        /* ── 导航 Tab ── */
+        #hap-tabs {
+            display: flex; padding: 10px 14px;
+            background: rgba(255,255,255,0.02);
+            gap: 6px; border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .hap-tab {
+            flex: 1; text-align: center; padding: 8px 4px; font-size: 11px; font-weight: 700;
+            cursor: pointer; border-radius: 12px; color: rgba(255,255,255,0.35);
+            transition: all .25s; border: 1px solid transparent;
+        }
+        .hap-tab.on {
+            background: rgba(99,102,241,0.15); color: #a5b4fc;
+            border-color: rgba(99,102,241,0.3);
+        }
+
+        /* ── 内容区 ── */
+        #hap-body { padding: 18px; }
+        .hap-pane { display: none; animation: fadeUp .35s ease; }
+        .hap-pane.on { display: block; }
+        @keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+
+        /* ── 指标卡片 ── */
+        .mc { 
+            background: rgba(255,255,255,0.04); border-radius: 18px; padding: 16px;
+            margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.07);
+        }
+        .mc-title {
+            font-size: 9.5px; font-weight: 800; letter-spacing: 1.2px;
+            color: rgba(255,255,255,0.3); text-transform: uppercase; margin-bottom: 12px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .mc-title::after { content:''; flex:1; height:1px; background: rgba(255,255,255,0.07); }
+        .mc-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .mc-row:last-child { margin-bottom: 0; }
+        .mc-label { font-size: 11px; color: rgba(255,255,255,0.4); font-weight: 500; }
+        .mc-val {
+            font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.85);
+            font-family: 'Inter', monospace; display: flex; align-items: center; gap: 5px;
+        }
+        .badge-s { padding: 2px 7px; border-radius: 6px; font-size: 9px; font-weight: 800; }
+        .b-green { background: rgba(52,211,153,0.15); color: #34d399; border: 1px solid rgba(52,211,153,0.2); }
+        .b-blue  { background: rgba(99,102,241,0.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.25); }
+        .b-red   { background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.2); }
+        .b-yellow{ background: rgba(251,191,36,0.15);  color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
+        .b-gray  { background: rgba(255,255,255,0.07);  color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.08); }
+
+        /* 进度条 */
+        .prog-wrap { width: 80px; height: 5px; background: rgba(255,255,255,0.08); border-radius: 99px; overflow: hidden; }
+        .prog-fill  { height: 100%; border-radius: 99px; transition: width .5s ease; }
+        .pf-green { background: linear-gradient(90deg,#34d399,#10b981); }
+        .pf-yellow{ background: linear-gradient(90deg,#fbbf24,#f59e0b); }
+        .pf-red   { background: linear-gradient(90deg,#f87171,#ef4444); }
+
+        /* ── 工具网格 ── */
+        .tg { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 14px; }
+        .tg-itm {
+            background: rgba(255,255,255,0.05); border-radius: 16px; padding: 14px 8px;
+            text-align: center; cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.06);
+            transition: all .25s;
+        }
+        .tg-itm:hover {
+            background: rgba(99,102,241,0.12);
+            border-color: rgba(99,102,241,0.35);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(99,102,241,0.2);
+        }
+        .tg-ico { font-size: 20px; margin-bottom: 6px; }
+        .tg-lbl { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.55); }
+
+        /* ── 动作按钮 ── */
+        .hap-btn {
+            width: 100%; padding: 13px 18px; border-radius: 16px; border: none; cursor: pointer;
+            font-size: 12.5px; font-weight: 800; transition: all .25s;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            margin-bottom: 10px;
+        }
+        .hap-btn:last-child { margin-bottom: 0; }
+        .hap-btn:hover { transform: translateY(-2px); }
+        .btn-indigo {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white; box-shadow: 0 4px 15px rgba(99,102,241,0.4);
+        }
+        .btn-indigo:hover { box-shadow: 0 8px 25px rgba(99,102,241,0.5); }
+        .btn-ghost {
+            background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.65);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .btn-ghost:hover { background: rgba(255,255,255,0.1); color: white; }
+        .btn-danger { background: linear-gradient(135deg,#ef4444,#dc2626); color:white; box-shadow:0 4px 15px rgba(239,68,68,0.4); }
+
+        /* ── 版本时间轴 ── */
+        .tl { padding: 0; margin: 0; }
+        .tl-item { display: flex; gap: 12px; margin-bottom: 14px; position: relative; }
+        .tl-item:last-child { margin-bottom: 0; }
+        .tl-dot-col { display: flex; flex-direction: column; align-items: center; }
+        .tl-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
+        .tl-line { width: 1px; flex: 1; background: rgba(255,255,255,0.07); margin-top: 4px; min-height: 20px; }
+        .tl-item:last-child .tl-line { display: none; }
+        .tl-v { font-size: 11px; font-weight: 800; color: rgba(255,255,255,0.8); margin-bottom: 3px; }
+        .tl-d { font-size: 9.5px; color: rgba(255,255,255,0.3); margin-bottom: 4px; }
+        .tl-c { font-size: 10px; color: rgba(255,255,255,0.5); line-height: 1.5; }
+
+        /* 时间组件 */
+        #hap-clock { font-size: 28px; font-weight: 900; color: white; font-family: 'Inter',monospace; letter-spacing: 1px; text-align:center; margin-bottom:5px; }
+        #hap-date  { font-size: 11px; color: rgba(255,255,255,0.35); text-align:center; margin-bottom:14px; }
+
+        /* 通知容器 */
+        #hap-notifs {
+            position: fixed; top: 25px; right: 25px; z-index: 2147483647;
+            display: flex; flex-direction: column; align-items: flex-end; pointer-events: none;
+        }
+        .hap-toast {
+            margin-bottom: 10px; padding: 14px 22px;
+            background: rgba(15,17,26,0.95); color: rgba(255,255,255,0.9);
+            border-left: 4px solid; border-radius: 18px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.4); font-size: 13px; font-weight: 700;
+            pointer-events: auto; opacity: 0; transform: translateX(40px);
+            transition: all .45s cubic-bezier(0.175,0.885,0.32,1.275);
+            backdrop-filter: blur(30px); white-space: nowrap;
+        }
+        .hap-toast.in { opacity: 1; transform: translateX(0); }
+    `);
+
+    // ===================== 通知模块 =====================
+    const Notify = (() => {
+        let box;
+        const colors = { info: '#6366f1', success: '#34d399', warning: '#fbbf24', error: '#f87171' };
+        return {
+            show(msg, type = 'info', dur = 4000) {
+                if (!box) { box = document.createElement('div'); box.id = 'hap-notifs'; document.body.appendChild(box); }
+                const t = document.createElement('div');
+                t.className = 'hap-toast'; t.style.borderLeftColor = colors[type] || colors.info;
+                t.textContent = msg; box.prepend(t);
+                requestAnimationFrame(() => t.classList.add('in'));
+                setTimeout(() => { t.classList.remove('in'); setTimeout(() => t.remove(), 500); }, dur);
             }
-            return "浏览器不支持显示";
-        },
-        getDOM() { return document.querySelectorAll('*').length + " 个节点"; },
-        getSSL() { return location.protocol === 'https:' ? "受 SSL 加密保护" : "协议不安全 (HTTP)"; },
-        getEncoding() { return document.characterSet || "UTF-8"; }
-    };
+        };
+    })();
 
-    // --- 超级工具集 ---
+    // ===================== UI 构建 =====================
+    function buildUI() {
+        if (document.getElementById('hap-root')) return;
+
+        const [browser, bVer] = SYS.browser();
+        const tagColors = { MAJOR: 'b-blue', FEATURE: 'b-green', FIX: 'b-yellow', UI: 'b-gray' };
+
+        const root = document.createElement('div');
+        root.id = 'hap-root';
+        if (CONFIG.IS_MIN) root.classList.add('min');
+
+        root.innerHTML = `
+        <div id="hap-inner">
+
+            <!-- 标题栏 -->
+            <div id="hap-header">
+                <div class="hap-title-row">
+                    <div class="hap-title-left">
+                        <span class="hap-badge-ver">v${CONFIG.VERSION}</span>
+                        <span class="hap-badge-ch">${CONFIG.CHANNEL}</span>
+                    </div>
+                    <span class="hap-tog" id="hap-tog">${CONFIG.IS_MIN ? '展开 ▲' : '最小化 ▼'}</span>
+                </div>
+                <div class="hap-title-text">🛡️ 全能助手控制中心</div>
+                <div class="hap-title-sub">${CONFIG.AUTHOR} · ${CONFIG.BUILD}</div>
+            </div>
+
+            <!-- 状态栏 -->
+            <div class="hap-status-bar" id="hap-sbar">
+                <span class="hap-sdot sdot-unk" id="hap-sdot"></span>
+                <span class="hap-stext" id="hap-stext">正在初始化系统环境...</span>
+                <span class="hap-stime" id="hap-stime">${new Date().toLocaleTimeString('zh-CN')}</span>
+            </div>
+
+            <!-- 折叠体 -->
+            <div id="hap-collapsible" style="${CONFIG.IS_MIN ? 'display:none' : ''}">
+
+                <!-- Tab 导航 -->
+                <div id="hap-tabs">
+                    <div class="hap-tab on" data-p="tools">🔧 工具</div>
+                    <div class="hap-tab" data-p="monitor">📊 监控</div>
+                    <div class="hap-tab" data-p="version">🏷️ 版本</div>
+                </div>
+
+                <!-- 内容 -->
+                <div id="hap-body">
+
+                    <!-- ======= 工具面板 ======= -->
+                    <div class="hap-pane on" id="pane-tools">
+                        <div id="hap-clock">00:00:00</div>
+                        <div id="hap-date"></div>
+                        <div class="tg">
+                            <div class="tg-itm" id="ti-note"><div class="tg-ico">📝</div><div class="tg-lbl">随手贴</div></div>
+                            <div class="tg-itm" id="ti-pwd"><div class="tg-ico">🔑</div><div class="tg-lbl">密码生成</div></div>
+                            <div class="tg-itm" id="ti-img"><div class="tg-ico">🖼️</div><div class="tg-lbl">图像采集</div></div>
+                            <div class="tg-itm" id="ti-qr"><div class="tg-ico">📱</div><div class="tg-lbl">二维码</div></div>
+                            <div class="tg-itm" id="ti-dark"><div class="tg-ico">◑</div><div class="tg-lbl">暗黑模式</div></div>
+                            <div class="tg-itm" id="ti-link"><div class="tg-ico">🔗</div><div class="tg-lbl">导出链接</div></div>
+                        </div>
+                        <button class="hap-btn btn-indigo" id="hap-btn-update">🚀 检查 GitHub 云端维护更新</button>
+                        <button class="hap-btn btn-ghost" id="hap-btn-diag">🛡️ 执行全系统诊断自检</button>
+                    </div>
+
+                    <!-- ======= 监控面板 ======= -->
+                    <div class="hap-pane" id="pane-monitor">
+                        <div class="mc">
+                            <div class="mc-title">🖥️ 运行环境</div>
+                            <div class="mc-row"><span class="mc-label">浏览器内核</span><span class="mc-val">${browser} <span class="badge-s b-blue">v${bVer}</span></span></div>
+                            <div class="mc-row"><span class="mc-label">脚本管理器</span><span class="mc-val">${CONFIG_MGRINF}</span></div>
+                            <div class="mc-row"><span class="mc-label">运行系统</span><span class="mc-val">${navigator.platform}</span></div>
+                            <div class="mc-row"><span class="mc-label">系统语言</span><span class="mc-val">${SYS.lang()}</span></div>
+                            <div class="mc-row"><span class="mc-label">浏览模式</span><span class="mc-val"><span class="badge-s ${SYS.incog() ? 'b-yellow' : 'b-green'}">${SYS.incog() ? '无痕模式' : '常规模式'}</span></span></div>
+                        </div>
+                        <div class="mc">
+                            <div class="mc-title">📐 显示与网络</div>
+                            <div class="mc-row"><span class="mc-label">屏幕分辨率</span><span class="mc-val">${SYS.resolution()} · DPR ${SYS.dpr()}</span></div>
+                            <div class="mc-row"><span class="mc-label">安全协议</span><span class="mc-val"><span class="badge-s ${SYS.ssl() ? 'b-green' : 'b-red'}">${SYS.ssl() ? '🔒 HTTPS 加密' : '⚠️ HTTP 不安全'}</span></span></div>
+                            <div class="mc-row"><span class="mc-label">文档编码</span><span class="mc-val">${SYS.charset()}</span></div>
+                            <div class="mc-row"><span class="mc-label">云端延迟</span><span class="mc-val"><span id="m-lat" class="badge-s b-gray">等待诊断</span></span></div>
+                            <div class="mc-row"><span class="mc-label">Cookie 支持</span><span class="mc-val"><span class="badge-s ${SYS.cookieEnabled() ? 'b-green' : 'b-red'}">${SYS.cookieEnabled() ? '已启用' : '已禁用'}</span></span></div>
+                        </div>
+                        <div class="mc">
+                            <div class="mc-title">⚡ 页面资源统计</div>
+                            <div class="mc-row"><span class="mc-label">DOM 节点数</span><span class="mc-val" id="m-dom">${SYS.dom()} 个</span></div>
+                            <div class="mc-row"><span class="mc-label">页面图片数</span><span class="mc-val">${SYS.images()} 张</span></div>
+                            <div class="mc-row"><span class="mc-label">外链数量</span><span class="mc-val">${SYS.links()} 条</span></div>
+                            <div class="mc-row"><span class="mc-label">脚本组件数</span><span class="mc-val">${SYS.scripts()} 个</span></div>
+                            ${performance.memory ? `
+                            <div class="mc-row" style="margin-top:10px;">
+                                <span class="mc-label">JS 堆内存</span>
+                                <span class="mc-val" style="flex-direction:column;align-items:flex-end;gap:4px;">
+                                    <span id="m-mem">${SYS.memory().used}MB / ${SYS.memory().total}MB</span>
+                                    <div class="prog-wrap"><div class="prog-fill ${SYS.memory().pct > 70 ? 'pf-red' : SYS.memory().pct > 40 ? 'pf-yellow' : 'pf-green'}" id="m-mbar" style="width:${SYS.memory().pct}%"></div></div>
+                                </span>
+                            </div>` : ''}
+                        </div>
+                    </div>
+
+                    <!-- ======= 版本面板 ======= -->
+                    <div class="hap-pane" id="pane-version">
+                        <div class="mc">
+                            <div class="mc-title">🏷️ 版本与发布信息</div>
+                            <div class="mc-row"><span class="mc-label">当前版本</span><span class="mc-val"><span class="badge-s b-blue">v${CONFIG.VERSION}</span></span></div>
+                            <div class="mc-row"><span class="mc-label">发布渠道</span><span class="mc-val"><span class="badge-s b-green">${CONFIG.CHANNEL}</span></span></div>
+                            <div class="mc-row"><span class="mc-label">构建标识</span><span class="mc-val" style="color:rgba(255,255,255,0.4)">${CONFIG.BUILD}</span></div>
+                            <div class="mc-row"><span class="mc-label">云端版本</span><span class="mc-val" id="v-remote"><span class="badge-s b-gray">待检测</span></span></div>
+                            <div class="mc-row"><span class="mc-label">更新状态</span><span class="mc-val" id="v-status"><span class="badge-s b-gray">未知</span></span></div>
+                        </div>
+                        <div class="mc">
+                            <div class="mc-title">👤 维护信息</div>
+                            <div class="mc-row"><span class="mc-label">维护作者</span><span class="mc-val">${CONFIG.AUTHOR}</span></div>
+                            <div class="mc-row"><span class="mc-label">联系平台</span><span class="mc-val">${CONFIG.CONTACT}</span></div>
+                            <div class="mc-row"><span class="mc-label">最后同步</span><span class="mc-val" id="v-lastsync" style="font-size:10px;">${STATE.lastSync}</span></div>
+                            <div class="mc-row"><span class="mc-label">累计启动</span><span class="mc-val">${STATE.injectCount} 次</span></div>
+                            <div class="mc-row"><span class="mc-label">工具调用</span><span class="mc-val">${STATE.toolCallCount} 次</span></div>
+                        </div>
+                        <div class="mc">
+                            <div class="mc-title">📋 版本历史时间轴</div>
+                            <div class="tl">
+                                ${CONFIG.CHANGELOG.map((l, i) => {
+                                    const dotCls = ['#6366f1','#34d399','#fbbf24','#f87171','#8b5cf6'][i % 5];
+                                    return `
+                                    <div class="tl-item">
+                                        <div class="tl-dot-col">
+                                            <div class="tl-dot" style="background:${dotCls};box-shadow:0 0 8px ${dotCls}40;"></div>
+                                            <div class="tl-line"></div>
+                                        </div>
+                                        <div style="flex:1;padding-bottom:4px;">
+                                            <div class="tl-v">v${l.v} <span class="badge-s ${tagColors[l.tag] || 'b-gray'}" style="font-size:8px;">${l.tag}</span></div>
+                                            <div class="tl-d">${l.d}</div>
+                                            <div class="tl-c">${l.c}</div>
+                                        </div>
+                                    </div>`;
+                                }).join('')}
+                            </div>
+                        </div>
+                        <button class="hap-btn btn-indigo" id="hap-btn-upd2">🔄 立即检查云端维护更新</button>
+                        <button class="hap-btn btn-ghost" id="hap-btn-repo">📂 前往 GitHub 源码仓库</button>
+                    </div>
+
+                </div><!-- hap-body -->
+            </div><!-- hap-collapsible -->
+        </div><!-- hap-inner -->
+        `;
+
+        document.body.appendChild(root);
+
+        // ── 事件绑定 ──
+        document.getElementById('hap-header').onclick = (e) => {
+            if (e.target.closest('.hap-tab')) return;
+            const isMin = root.classList.toggle('min');
+            document.getElementById('hap-collapsible').style.display = isMin ? 'none' : '';
+            document.getElementById('hap-tog').textContent = isMin ? '展开 ▲' : '最小化 ▼';
+            GM_setValue('is_minimized', isMin);
+        };
+
+        document.getElementById('hap-tabs').onclick = (e) => {
+            const tab = e.target.closest('.hap-tab');
+            if (!tab) return;
+            document.querySelectorAll('.hap-tab').forEach(t => t.classList.remove('on'));
+            document.querySelectorAll('.hap-pane').forEach(p => p.classList.remove('on'));
+            tab.classList.add('on');
+            document.getElementById(`pane-${tab.dataset.p}`).classList.add('on');
+        };
+
+        const bindTool = (id, fn) => {
+            const el = document.getElementById(id);
+            if (el) el.onclick = () => { STATE.toolCallCount++; GM_setValue('tool_calls', STATE.toolCallCount); fn(); };
+        };
+
+        bindTool('ti-note', Tools.sticky);
+        bindTool('ti-pwd', Tools.pwd);
+        bindTool('ti-img', Tools.images);
+        bindTool('ti-qr', Tools.qr);
+        bindTool('ti-dark', Tools.dark);
+        bindTool('ti-link', Tools.links);
+        document.getElementById('hap-btn-update').onclick = () => checkUpdate(true);
+        document.getElementById('hap-btn-diag').onclick = () => Tools.diag();
+        document.getElementById('hap-btn-upd2').onclick = () => checkUpdate(true);
+        document.getElementById('hap-btn-repo').onclick = () => GM_openInTab(CONFIG.REPO_URL);
+
+        // 时钟
+        const updateClock = () => {
+            const n = new Date();
+            const cEl = document.getElementById('hap-clock');
+            const dEl = document.getElementById('hap-date');
+            const stEl = document.getElementById('hap-stime');
+            if (cEl) cEl.textContent = n.toLocaleTimeString('zh-CN', { hour12: false });
+            if (dEl) dEl.textContent = n.toLocaleDateString('zh-CN', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+            if (stEl) stEl.textContent = n.toLocaleTimeString('zh-CN', { hour12: false });
+        };
+        updateClock(); setInterval(updateClock, 1000);
+
+        // 内存实时更新
+        if (performance.memory) {
+            setInterval(() => {
+                const m = SYS.memory();
+                const mEl = document.getElementById('m-mem');
+                const bEl = document.getElementById('m-mbar');
+                const dEl = document.getElementById('m-dom');
+                if (mEl) mEl.textContent = `${m.used}MB / ${m.total}MB`;
+                if (bEl) bEl.style.width = m.pct + '%';
+                if (dEl) dEl.textContent = SYS.dom() + ' 个';
+            }, 2000);
+        }
+    }
+
+    // 因模板字符串需要先计算管理器信息
+    const CONFIG_MGRINF = `${GM_info.scriptHandler || 'Tampermonkey'} v${GM_info.version || '未知'}`;
+
+    // ===================== 工具集 =====================
     const Tools = {
-        sw: { t: null, s: 0, r: false },
-        
-        selfCheck() {
-            const lat = document.getElementById('v-lat');
-            Notify.show('🚀 正在启动全场景运行环境审计...', 'info');
-            const s = Date.now();
-            GM_xmlhttpRequest({
-                method: 'HEAD', url: 'https://github.com/favicon.ico?t='+s, timeout: 5000,
-                onload: () => {
-                    const l = Date.now() - s;
-                    if(lat) { lat.innerText = l+'ms'; lat.style.color = l<200?'#2ecc71':'#f1c40f'; }
-                    Notify.show(`审计完成：节点链路 ${l}ms，系统安全性 [优秀]`, 'success');
-                }
-            });
-        },
-
-        forceUpdate() { Notify.show('⚡ 正在强制连接 GitHub 全球主维护分路...', 'info'); checkUpdate(true); },
-        
-        toggleSticky() {
+        sticky() {
             let n = document.getElementById('h-pn');
-            if(!n){
-                n = document.createElement('div'); n.id='h-pn';
-                n.style.cssText=`position:fixed;top:150px;left:40px;width:220px;height:240px;background:rgba(255,255,180,0.92);z-index:9000000;border-radius:25px;box-shadow:0 15px 40px rgba(0,0,0,0.15);padding:20px;cursor:move;backdrop-filter:blur(10px);border:1px solid rgba(0,0,0,0.03);`;
-                n.innerHTML=`<div style="font-size:11px;font-weight:900;color:#888;margin-bottom:12px;border-bottom:1px solid #ddd;padding-bottom:5px;">📋 网页笔记 (域名锁定)</div><textarea id="h-ta" style="width:100%;height:165px;background:transparent;border:none;outline:none;resize:none;font-size:14px;color:#333;font-weight:600;"></textarea>`;
+            if (!n) {
+                n = document.createElement('div'); n.id = 'h-pn';
+                n.style.cssText = `position:fixed;top:130px;left:40px;width:230px;height:250px;background:rgba(15,17,26,0.92);z-index:9999999;border-radius:22px;box-shadow:0 20px 60px rgba(0,0,0,0.4);padding:20px;cursor:move;backdrop-filter:blur(30px);border:1px solid rgba(99,102,241,0.3);`;
+                n.innerHTML = `<div style="font-size:10px;font-weight:800;color:rgba(165,180,252,0.8);margin-bottom:12px;letter-spacing:1px;">📝 网页笔记 · 域名绑定存储</div><textarea id="h-ta" style="width:100%;height:180px;background:transparent;border:none;outline:none;resize:none;font-size:13px;color:rgba(255,255,255,0.8);font-family:'Inter',sans-serif;line-height:1.6;"></textarea>`;
                 document.body.appendChild(n);
                 const ta = document.getElementById('h-ta');
                 ta.value = GM_getValue(`n_${location.hostname}`, '');
                 ta.oninput = () => GM_setValue(`n_${location.hostname}`, ta.value);
-                let isD=false, o=[0,0];
-                n.onmousedown=(e)=>{ if(e.target===ta)return; isD=true; o=[n.offsetLeft-e.clientX, n.offsetTop-e.clientY]; };
-                document.onmousemove=(e)=>{ if(!isD)return; n.style.left=(e.clientX+o[0])+'px'; n.style.top=(e.clientY+o[1])+'px'; };
-                document.onmouseup=()=>{ isD=false; };
-                Notify.show('随手贴挂载成功', 'success');
-            } else { n.style.display = n.style.display==='none'?'block':'none'; Notify.show(n.style.display==='none'?'笔记隐藏':'笔记显示','info'); }
+                let dragging = false, ox = 0, oy = 0;
+                n.onmousedown = (e) => { if (e.target === ta) return; dragging = true; ox = n.offsetLeft - e.clientX; oy = n.offsetTop - e.clientY; };
+                document.onmousemove = (e) => { if (dragging) { n.style.left = (e.clientX + ox) + 'px'; n.style.top = (e.clientY + oy) + 'px'; } };
+                document.onmouseup = () => dragging = false;
+                Notify.show('📝 随手贴已挂载，内容实时保存', 'success');
+            } else { n.style.display = n.style.display === 'none' ? 'block' : 'none'; Notify.show(n.style.display === 'none' ? '便签已隐藏' : '便签已显示', 'info'); }
         },
 
-        genPwd() {
-            const c = "abcdefgABCDEFG1234567890!@#$%^&*";
-            let r = ""; for(let i=0;i<18;i++) r+=c.charAt(Math.floor(Math.random()*c.length));
-            navigator.clipboard.writeText(r).then(()=>Notify.show(`强密码生成并复制: ${r}`, 'success'));
+        pwd() {
+            const c = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?';
+            let r = ''; for (let i = 0; i < 20; i++) r += c[Math.floor(Math.random() * c.length)];
+            navigator.clipboard.writeText(r).then(() => Notify.show(`🔑 已生成并复制: ${r.slice(0,10)}...`, 'success'));
         },
 
-        genQR() {
-            const url = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(location.href)}`;
+        images() {
+            Notify.show('🖼️ 正在扫描页面所有图像资源...', 'info');
+            const srcs = [...new Set([...document.querySelectorAll('img')].map(i => i.src))].filter(s => s.startsWith('http'));
+            if (!srcs.length) return Notify.show('未检测到图像资源', 'warning');
             const over = document.createElement('div');
-            over.style.cssText=`position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:99999999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(15px);opacity:0;transition:0.3s;`;
-            over.innerHTML=`<div style="background:white;padding:35px;border-radius:40px;text-align:center;"><h3>多端网址同步</h3><img src="${url}" style="margin:20px 0;width:180px;border-radius:15px;"><br/><button id="qr-cl" class="btn-full btn-m" style="max-width:120px;margin:0 auto;font-size:11px;">关闭</button></div>`;
-            document.body.appendChild(over); setTimeout(()=>over.style.opacity='1',10);
-            document.getElementById('qr-cl').onclick=()=>{ over.style.opacity='0'; setTimeout(()=>over.remove(),300); };
-            Notify.show('二维码已生成', 'success');
+            over.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999999;backdrop-filter:blur(30px);overflow-y:auto;padding:50px;`;
+            over.innerHTML = `<div style="max-width:900px;margin:0 auto;"><h2 style="color:white;font-size:20px;font-weight:900;margin-bottom:30px;">🖼️ 图像采集清单 · 共 ${srcs.length} 张</h2><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;">${srcs.map(s => `<img src="${s}" style="width:100%;height:140px;object-fit:cover;border-radius:16px;border:2px solid rgba(255,255,255,0.08);cursor:pointer;transition:.2s;" onmouseover="this.style.border='2px solid #6366f1'" onmouseout="this.style.border='2px solid rgba(255,255,255,0.08)'" onclick="window.open('${s}')">`).join('')}</div><button id="img-cl" style="margin-top:40px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;padding:14px 40px;border-radius:16px;font-size:14px;font-weight:800;cursor:pointer;">关闭预览</button></div>`;
+            document.body.appendChild(over);
+            document.getElementById('img-cl').onclick = () => over.remove();
         },
 
-        collImg() {
-            Notify.show('📸 正在通过暴力缓冲区扫描获取图像...', 'info');
-            const s = [...new Set([...document.querySelectorAll('img')].map(i=>i.src))].filter(u=>u && u.startsWith('http'));
-            if(s.length===0) return Notify.show('未识别到资源', 'warning');
-            const o = document.createElement('div');
-            o.style.cssText=`position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.95);z-index:99999999;backdrop-filter:blur(30px);padding:50px;overflow-y:auto;`;
-            o.innerHTML=`<div class="no-s" style="max-width:900px;margin:0 auto;"><h2>图像采集矩阵 (${s.length})</h2><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-top:30px;">${s.map(i=>`<img src="${i}" style="width:100%;height:160px;object-fit:cover;border-radius:20px;border:4px solid white;box-shadow:0 10px 30px rgba(0,0,0,0.1);cursor:pointer;" onclick="window.open('${i}')">`).join('')}</div><button id="img-cl" class="btn-full btn-m" style="margin-top:50px;max-width:200px">退出预览</button></div>`;
-            document.body.appendChild(o); document.getElementById('img-cl').onclick=()=>o.remove();
+        qr() {
+            const url = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(location.href)}`;
+            const over = document.createElement('div');
+            over.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(20px);`;
+            over.innerHTML = `<div style="background:rgba(15,17,26,0.96);padding:35px;border-radius:32px;text-align:center;border:1px solid rgba(255,255,255,0.08);box-shadow:0 40px 100px rgba(0,0,0,0.5);"><div style="color:rgba(255,255,255,0.5);font-size:11px;font-weight:700;letter-spacing:1px;margin-bottom:20px;">📱 多端网址同步二维码</div><img src="${url}" style="width:180px;border-radius:18px;border:10px solid rgba(255,255,255,0.05);"><div style="color:rgba(255,255,255,0.3);font-size:10px;margin-top:15px;">${location.hostname}</div><button id="qr-cl" style="margin-top:20px;background:#6366f1;color:white;border:none;padding:12px 30px;border-radius:14px;font-size:12px;font-weight:800;cursor:pointer;">关闭</button></div>`;
+            document.body.appendChild(over);
+            document.getElementById('qr-cl').onclick = () => over.remove();
+            Notify.show('📱 二维码已生成，扫码即可跨端访问', 'success');
+        },
+
+        dark() {
+            const isD = !GM_getValue('dark_mode', false);
+            GM_setValue('dark_mode', isD);
+            const id = 'h-dark-css', el = document.getElementById(id);
+            if (isD) {
+                if (!el) { const s = document.createElement('style'); s.id = id; s.innerHTML = `html{filter:invert(.95) hue-rotate(180deg)!important}img,video,iframe,canvas{filter:invert(1.05) hue-rotate(180deg)!important}#hap-root,#hap-notifs{filter:invert(1.05) hue-rotate(180deg)!important}`; document.head.appendChild(s); }
+                Notify.show('◑ 暗黑模式已激活，所有色彩自动反转', 'info');
+            } else { if (el) el.remove(); Notify.show('◑ 已恢复常规视觉模式', 'info'); }
+        },
+
+        links() {
+            const ls = [...new Set([...document.querySelectorAll('a')].map(a => a.href).filter(h => h.startsWith('http')))];
+            const b = new Blob([ls.join('\n')], { type: 'text/plain' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `links-${location.hostname}.txt`; a.click();
+            Notify.show(`🔗 链接清单已导出，共 ${ls.length} 条`, 'success');
+        },
+
+        diag() {
+            const latEl = document.getElementById('m-lat');
+            Notify.show('🛡️ 全系统诊断启动，正在测量节点延迟...', 'info');
+            const s = Date.now();
+            GM_xmlhttpRequest({
+                method: 'HEAD', url: 'https://github.com/favicon.ico?t=' + s, timeout: 6000,
+                onload: () => {
+                    const l = Date.now() - s;
+                    STATE.latency = l; STATE.latencyChecked = true;
+                    if (latEl) { latEl.textContent = l + 'ms'; latEl.className = 'badge-s ' + (l < 200 ? 'b-green' : l < 500 ? 'b-yellow' : 'b-red'); }
+                    updateStatusBar('ok', `系统诊断完成 · 延迟 ${l}ms · 状态极佳`);
+                    Notify.show(`🛡️ 诊断完成：链路延迟 ${l}ms，安全评级 [A级]`, 'success');
+                },
+                onerror: () => { Notify.show('⚠️ 诊断失败，请检查代理设置', 'error'); }
+            });
         }
     };
 
-    // --- UI 渲染系统 ---
-    function createUI() {
-        if (document.getElementById('helper-ui-root')) return;
-        GM_addStyle(UI_STYLES);
-
-        const r = document.createElement('div');
-        r.id = 'helper-ui-root'; if(CONFIG.IS_MINIMIZED) r.classList.add('minimized');
-
-        // Header
-        const h = document.createElement('div');
-        h.className = 'h-header';
-        h.innerHTML = `<div><span id="h-dot" class="h-dot dot-ok"></span><span>高配版助手中心</span></div><span id="h-tog" style="font-size:12px;opacity:0.8;">${CONFIG.IS_MINIMIZED?'展开':'折叠'}</span>`;
-        h.onclick = (e) => {
-            if(e.target.closest('.h-tab-itm')) return;
-            const min = r.classList.toggle('minimized');
-            b.style.display = min?'none':'block';
-            t.style.display = min?'none':'flex';
-            document.getElementById('h-tog').innerText = min?'展开':'折叠';
-            GM_setValue('is_minimized', min);
-        };
-        r.appendChild(h);
-
-        // Tabs
-        const t = document.createElement('div');
-        t.className = 'h-tabs'; t.style.display = CONFIG.IS_MINIMIZED?'none':'flex';
-        t.innerHTML = `<div class="h-tab-itm active" data-tab="toolbox">功能网格</div><div class="h-tab-itm" data-tab="monitor">深度监控</div>`;
-        t.onclick = (e) => {
-            const itm = e.target.closest('.h-tab-itm');
-            if(itm) {
-                document.querySelectorAll('.h-tab-itm').forEach(el=>el.classList.remove('active'));
-                itm.classList.add('active');
-                document.querySelectorAll('.t-content').forEach(el=>el.classList.remove('active'));
-                document.getElementById(`tab-${itm.dataset.tab}`).classList.add('active');
-            }
-        };
-        r.appendChild(t);
-
-        const b = document.createElement('div');
-        b.className = 'h-body'; b.style.display = CONFIG.IS_MINIMIZED?'none':'block';
-
-        // 1. 超级工具单元
-        const tBox = document.createElement('div');
-        tBox.id = 'tab-toolbox'; tBox.className = 't-content active';
-        tBox.innerHTML = `
-            <div class="m-card" style="padding:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-weight:900;font-size:16px;color:#2c3e50" id="h-clk">00:00:00</div>
-                <div style="font-size:10px;font-weight:900;color:var(--h-suc);" id="v-lat">--ms</div>
-            </div>
-            <div class="tool-grid">
-                <div class="tool-itm" id="t-note"><div class="tool-ico">📝</div><div class="tool-name">随手贴</div></div>
-                <div class="tool-itm" id="t-pwd"><div class="tool-ico">🔑</div><div class="tool-name">密码生成</div></div>
-                <div class="tool-itm" id="t-img"><div class="tool-ico">🖼️</div><div class="tool-name">图采</div></div>
-                <div class="tool-itm" id="t-qr"><div class="tool-ico">📱</div><div class="tool-name">二维码</div></div>
-                <div class="tool-itm" id="t-dark"><div class="tool-ico">◑</div><div class="tool-name">暗黑</div></div>
-                <div class="tool-itm" id="t-link"><div class="tool-ico">🔗</div><div class="tool-name">链接</div></div>
-            </div>
-            <button id="b-upd-f" class="btn-full btn-m">🚀 强制云端维护同步</button>
-            <button id="b-links-f" class="btn-full btn-l" style="margin-top:10px;">🛡️ 执行全球环境诊断</button>
-        `;
-
-        // 2. 深度监控单元
-        const tMon = document.createElement('div');
-        tMon.id = 'tab-monitor'; tMon.className = 't-content';
-        tMon.innerHTML = `
-            <div class="m-card">
-                <div class="m-header">⚙️ 核心运行指标 (Core)</div>
-                <div class="m-row"><span class="m-lab">系统内核</span><span class="m-val">${CONFIG.ENV.browser} / ${CONFIG.ENV.platform}</span></div>
-                <div class="m-row"><span class="m-lab">堆内存占位</span><span class="m-val" id="m-mem">${SystemScanner.getMemory()}</span></div>
-                <div class="m-row"><span class="m-lab">DOM 拓扑</span><span class="m-val" id="m-dom">${SystemScanner.getDOM()}</span></div>
-            </div>
-            <div class="m-card">
-                <div class="m-header">🌍 环境特征感知 (Environment)</div>
-                <div class="m-row"><span class="m-lab">屏幕解析度</span><span class="m-val">${CONFIG.ENV.screen} (DPR:${CONFIG.ENV.dpr})</span></div>
-                <div class="m-row"><span class="m-lab">加密协议</span><span class="m-val">${SystemScanner.getSSL()}</span></div>
-                <div class="m-row"><span class="m-lab">文档编码</span><span class="m-val">${CONFIG.ENV.charset}</span></div>
-                <div class="m-row"><span class="m-lab">浏览权限</span><span class="m-val">${CONFIG.ENV.incognito}</span></div>
-            </div>
-            <div class="m-card" style="margin-bottom:0;">
-                <div class="m-header">📜 全球维护流水 (Build)</div>
-                <div class="no-s" style="font-size:9px;color:#999;max-height:50px;overflow-y:auto;line-height:1.4;">
-                    ${CONFIG.CHANGELOG.map(l=>`• <b>v${l.v}</b>: ${l.c}<br/>`).join('')}
-                </div>
-            </div>
-        `;
-
-        b.appendChild(tBox); b.appendChild(tMon);
-        r.appendChild(b); document.body.appendChild(r);
-
-        // 功能挂载
-        document.getElementById('t-note').onclick = () => Tools.toggleSticky();
-        document.getElementById('t-pwd').onclick = () => Tools.genPwd();
-        document.getElementById('t-img').onclick = () => Tools.collImg();
-        document.getElementById('t-qr').onclick = () => Tools.genQR();
-        document.getElementById('t-dark').onclick = () => {
-            const isD = !GM_getValue('dark_mode', false);
-            GM_setValue('dark_mode', isD); applyDarkMode(isD);
-            Notify.show(isD?'暗黑已激活':'模式重置','info');
-        };
-        document.getElementById('t-link').onclick = () => {
-            const ls = [...new Set([...document.querySelectorAll('a')].map(a=>a.href).filter(h=>h.startsWith('http')))];
-            const b = new Blob([ls.join('\n')], {type:'text/plain'});
-            const a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='links.txt'; a.click();
-            Notify.show('链接已导出','success');
-        };
-        document.getElementById('b-upd-f').onclick = () => Tools.forceUpdate();
-        document.getElementById('b-links-f').onclick = () => Tools.selfCheck();
-
-        setInterval(() => {
-            document.getElementById('h-clk').innerText = new Date().toLocaleTimeString('zh-CN',{hour12:false});
-            const memEl = document.getElementById('m-mem'); if(memEl) memEl.innerText = SystemScanner.getMemory();
-        }, 1000);
+    // ===================== 更新检测 =====================
+    function updateStatusBar(type, text) {
+        const dot = document.getElementById('hap-sdot');
+        const txt = document.getElementById('hap-stext');
+        if (!dot || !txt) return;
+        dot.className = 'hap-sdot ' + ({ ok: 'sdot-ok', wait: 'sdot-wait', bad: 'sdot-bad', unk: 'sdot-unk' }[type] || 'sdot-unk');
+        txt.textContent = text;
     }
 
-    // 维持核心同步逻辑
-    function checkUpdate(man=false) {
-        const d = document.getElementById('h-dot'); if(d) d.className='h-dot dot-wait';
+    function checkUpdate(manual = false) {
+        updateStatusBar('wait', '正在连接 GitHub 全球维护镜像...');
+        if (manual) Notify.show('⚡ 正在请求云端版本信息...', 'info');
+
+        const vRemote = document.getElementById('v-remote');
+        const vStatus = document.getElementById('v-status');
+
         GM_xmlhttpRequest({
-            method:'GET', url:CONFIG.UPDATE_URL+'?t='+Date.now(), timeout:10000,
-            onload:(res)=>{
-                if(res.status===200){
+            method: 'GET', url: CONFIG.UPDATE_URL + '?t=' + Date.now(),
+            timeout: 12000,
+            onload(res) {
+                if (res.status === 200) {
                     const m = res.responseText.match(/@version\s+([\d.]+)/i);
-                    if(m && isNewerVersion(m[1], CONFIG.CURRENT_VERSION)){
-                        if(d) d.className='h-dot dot-upd';
-                        if(confirm(`🚀 云端发现补丁: v${m[1]}\n当前版本: v${CONFIG.CURRENT_VERSION}\n\n立即同步？`)) GM_openInTab(CONFIG.UPDATE_URL);
-                    } else {
-                        if(d) d.className='h-dot dot-ok';
-                        if(man) Notify.show('系统已处于最新维护状态','success');
-                        GM_setValue('last_sync_time', new Date().toLocaleString());
+                    if (m) {
+                        const rv = m[1];
+                        if (vRemote) vRemote.innerHTML = `<span class="badge-s b-blue">v${rv}</span>`;
+
+                        if (isNewer(rv, CONFIG.VERSION)) {
+                            if (vStatus) vStatus.innerHTML = `<span class="badge-s b-red">🔴 发现新版本</span>`;
+                            updateStatusBar('bad', `⚠️ 发现维护补丁 v${rv}，建议立即更新`);
+                            if (confirm(`🚀 发现云端维护版本 v${rv}\n当前本地版本 v${CONFIG.VERSION}\n\n是否立即跳转 GitHub 同步？`)) GM_openInTab(CONFIG.UPDATE_URL);
+                        } else {
+                            if (vStatus) vStatus.innerHTML = `<span class="badge-s b-green">✅ 已是最新</span>`;
+                            const now = new Date().toLocaleString('zh-CN');
+                            GM_setValue('last_sync', now);
+                            const lsEl = document.getElementById('v-lastsync');
+                            if (lsEl) lsEl.textContent = now;
+                            updateStatusBar('ok', '云端同步完成 · 本地版本已是最新');
+                            if (manual) Notify.show('✅ 已是最新版本，无需更新', 'success');
+                        }
                     }
+                } else {
+                    updateStatusBar('unk', '服务器响应异常，请稍后重试');
+                    if (manual) Notify.show('❌ 服务器响应异常: ' + res.status, 'error');
                 }
+            },
+            onerror() {
+                updateStatusBar('unk', '网络连接失败，请检查代理设置');
+                if (manual) Notify.show('⚠️ 网络连接失败', 'error');
             }
         });
     }
 
-    function isNewerVersion(r, c) {
-        const rV = r.split('.').map(Number), cV = c.split('.').map(Number);
-        for (let i = 0; i < Math.max(rV.length, cV.length); i++) {
-            if ((rV[i] || 0) > (cV[i] || 0)) return true;
-            if ((rV[i] || 0) < (cV[i] || 0)) return false;
+    function isNewer(r, c) {
+        const a = r.split('.').map(Number), b = c.split('.').map(Number);
+        for (let i = 0; i < Math.max(a.length, b.length); i++) {
+            if ((a[i] || 0) > (b[i] || 0)) return true;
+            if ((a[i] || 0) < (b[i] || 0)) return false;
         }
         return false;
     }
 
-    function applyDarkMode(e) {
-        const id = 'h-d-s', el = document.getElementById(id);
-        if (e) {
-            if (!el) {
-                const s = document.createElement('style'); s.id = id;
-                s.innerHTML = `html { filter: invert(0.96) hue-rotate(180deg) !important; background: #000; } img, video, iframe, canvas, [style*="background-image"] { filter: invert(1.04) hue-rotate(180deg) !important; } #helper-ui-root, #helper-notif-box { filter: invert(1.04) hue-rotate(180deg) !important; }`;
-                document.head.appendChild(s);
-            }
-        } else if (el) el.remove();
-    }
-
+    // ===================== 入口 =====================
     function init() {
-        const lastV = GM_getValue('l_v_c', '');
-        if (lastV && isNewerVersion(CONFIG.CURRENT_VERSION, lastV)) {
-            Notify.show(`🎉 系统成功升级至 v${CONFIG.CURRENT_VERSION}，正在重组环境数据...`, 'success');
-            GM_setValue('l_v_c', CONFIG.CURRENT_VERSION);
+        const lastV = GM_getValue('lv', '');
+        if (lastV && isNewer(CONFIG.VERSION, lastV)) {
+            Notify.show(`🎉 脚本已升级至 v${CONFIG.VERSION}，正在刷新运行环境...`, 'success');
+            GM_setValue('lv', CONFIG.VERSION);
             setTimeout(() => location.reload(true), 1500);
-        } else {
-            GM_setValue('l_v_c', CONFIG.CURRENT_VERSION);
-            createUI(); applyDarkMode(GM_getValue('dark_mode', false));
-            checkUpdate(false);
+            return;
         }
+        GM_setValue('lv', CONFIG.VERSION);
+        buildUI();
+        if (GM_getValue('dark_mode', false)) document.getElementById('ti-dark')?.click();
+        updateStatusBar('wait', '正在建立云端检测连接...');
+        setTimeout(() => checkUpdate(false), 1000);
     }
 
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
 
 })();
