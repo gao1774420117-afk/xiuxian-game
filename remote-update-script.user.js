@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         远程更新与实用工具助手
 // @namespace    http://tampermonkey.net/
-// @version      2.2.0
-// @description  Premium 级全能助手 — 专业仪表盘·深度监控·超级工具集·GitHub 自动同步 (精修 2.2)
+// @version      2.3.0
+// @description  Premium 级全能助手 — 专业仪表盘·深度监控·超级工具集·GitHub 自动同步 (精修 2.3)
 // @author       gao1774420117
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
@@ -29,12 +29,13 @@
         UPDATE_URL: 'https://github.com/gao1774420117-afk/xiuxian-game/raw/refs/heads/main/remote-update-script.user.js',
         REPO_URL: 'https://github.com/gao1774420117-afk/xiuxian-game',
         VERSION: GM_info.script.version,
-        BUILD: '20260403-R2',
+        BUILD: '20260403-R3',
         CHANNEL: 'STABLE',
         AUTHOR: 'gao1774420117',
         CONTACT: 'GitHub · TapTap',
         IS_MIN: GM_getValue('is_minimized', false),
         CHANGELOG: [
+            { v: '2.3.0', d: '2026/04/03', tag: 'UI',    c: 'UI 全面升级：Aurora 标题流光、时钟渐变字、工具格彩色发光、Tab 滑动指示、迷你球脉冲环、按钮 Shimmer、Toast 图标栏。' },
             { v: '2.2.0', d: '2026/04/03', tag: 'UI',    c: '更新通知弹窗与主菜单风格完全统一：相同标题栏渐变、状态条版本对比、卡片式日志时间轴，新增右上角 ✕ 关闭按钮。' },
             { v: '2.1.0', d: '2026/04/03', tag: 'FIX',   c: '修复 CONFIG_MGRINF 时序 Bug、暗黑模式计数器问题及拖拽事件冲突；全新迷你悬浮球设计。' },
             { v: '2.0.0', d: '2026/04/03', tag: 'MAJOR',  c: '全面重构 Premium UI 2.0：深度仪表盘、动态指标卡、版本时间轴、加密状态显示。' },
@@ -99,191 +100,320 @@
             position: fixed; bottom: 28px; right: 28px;
             width: 370px;
             z-index: 2147483640;
-            transition: width .45s cubic-bezier(.77,0,.18,1), opacity .3s;
+            transition: width .5s cubic-bezier(.77,0,.18,1), opacity .3s;
+            filter: drop-shadow(0 24px 48px rgba(0,0,0,0.45));
         }
         #hap-root.min { width: 64px; }
 
         #hap-inner {
-            background: rgba(13,15,24,0.97);
-            border-radius: 26px;
-            border: 1px solid rgba(255,255,255,0.07);
+            background: rgba(10,11,20,0.97);
+            border-radius: 28px;
+            border: 1px solid rgba(255,255,255,0.08);
             overflow: hidden;
-            backdrop-filter: blur(50px) saturate(200%);
-            box-shadow: 0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.08) inset;
+            backdrop-filter: blur(60px) saturate(220%);
+            box-shadow: 0 0 0 1px rgba(99,102,241,0.1) inset,
+                        0 2px 0 rgba(255,255,255,0.05) inset;
         }
 
-        /* ══════ 标题栏 (展开态) ══════ */
+        /* ══════ 标题栏 Aurora ══════ */
         #hap-header {
-            background: linear-gradient(135deg, #0f0c29 0%, #302b63 60%, #1e1b4b 100%);
+            background: linear-gradient(135deg, #0a0820 0%, #1e1b52 50%, #0f0c29 100%);
             padding: 18px 20px 14px;
             cursor: pointer;
             position: relative; overflow: hidden;
         }
+        /* 流动光晕层 */
+        #hap-header::before {
+            content: '';
+            position: absolute; inset: -50%;
+            background: conic-gradient(from 0deg at 30% 60%,
+                transparent 0deg, rgba(99,102,241,0.18) 60deg,
+                transparent 120deg, rgba(168,85,247,0.12) 200deg,
+                transparent 280deg, rgba(59,130,246,0.1) 340deg, transparent 360deg);
+            animation: hap-aurora 8s linear infinite;
+        }
+        @keyframes hap-aurora { to { transform: rotate(360deg); } }
+        /* 径向光斑 */
         #hap-header::after {
             content: '';
             position: absolute; inset: 0;
-            background: radial-gradient(ellipse at top left, rgba(99,102,241,0.25), transparent 60%),
-                        radial-gradient(ellipse at bottom right, rgba(168,85,247,0.15), transparent 60%);
+            background: radial-gradient(ellipse at 15% 50%, rgba(99,102,241,0.3), transparent 55%),
+                        radial-gradient(ellipse at 85% 10%, rgba(168,85,247,0.2), transparent 50%);
         }
         .h-top { display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1; }
         .h-badges { display: flex; gap: 6px; }
-        .hbv { background: linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; font-size:9px; font-weight:900; padding:3px 9px; border-radius:7px; letter-spacing:.5px; }
-        .hbc { background:rgba(52,211,153,0.12); color:#34d399; font-size:9px; font-weight:900; padding:3px 9px; border-radius:7px; border:1px solid rgba(52,211,153,0.25); }
-        .h-tog { color:rgba(255,255,255,0.4); font-size:11px; font-weight:700; position:relative; z-index:1; cursor:pointer; padding:4px 8px; border-radius:8px; transition:.2s; }
-        .h-tog:hover { color:white; background:rgba(255,255,255,0.08); }
-        .h-name { font-size:15px; font-weight:900; color:white; margin-top:10px; position:relative; z-index:1; letter-spacing:-.3px; }
-        .h-sub  { font-size:10px; color:rgba(255,255,255,0.35); margin-top:3px; position:relative; z-index:1; }
+        .hbv {
+            background: linear-gradient(135deg,#6366f1,#8b5cf6);
+            color:#fff; font-size:9px; font-weight:900; padding:3px 10px;
+            border-radius:8px; letter-spacing:.6px;
+            box-shadow: 0 2px 8px rgba(99,102,241,0.5);
+        }
+        .hbc {
+            background:rgba(52,211,153,0.1); color:#34d399; font-size:9px;
+            font-weight:900; padding:3px 10px; border-radius:8px;
+            border:1px solid rgba(52,211,153,0.3);
+        }
+        .h-tog {
+            color:rgba(255,255,255,0.35); font-size:11px; font-weight:700;
+            position:relative; z-index:1; cursor:pointer;
+            padding:4px 9px; border-radius:8px; transition:.25s;
+            border: 1px solid transparent;
+        }
+        .h-tog:hover { color:white; background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.08); }
+        .h-name {
+            font-size:15px; font-weight:900; color:white; margin-top:10px;
+            position:relative; z-index:1; letter-spacing:-.3px;
+            text-shadow: 0 0 30px rgba(165,180,252,0.4);
+        }
+        .h-sub  { font-size:10px; color:rgba(255,255,255,0.3); margin-top:3px; position:relative; z-index:1; }
 
         /* ══════ 状态条 ══════ */
         #hap-sbar {
             display: flex; align-items: center; gap: 9px;
-            padding: 9px 20px;
-            background: rgba(255,255,255,0.025);
+            padding: 8px 20px;
+            background: rgba(255,255,255,0.02);
             border-bottom: 1px solid rgba(255,255,255,0.04);
         }
-        .sdot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-        .s-ok   { background:#34d399; box-shadow:0 0 10px #34d39988; }
-        .s-wait { background:#fbbf24; animation:sblink 1.2s ease-in-out infinite; }
-        .s-bad  { background:#f87171; box-shadow:0 0 10px #f8717188; }
-        .s-unk  { background:#4b5563; }
-        @keyframes sblink { 0%,100%{opacity:1} 50%{opacity:.2} }
-        #hap-stext { flex:1; font-size:10.5px; font-weight:600; color:rgba(255,255,255,0.5); }
-        #hap-stime { font-size:10px; color:rgba(255,255,255,0.22); font-family:monospace; }
+        .sdot { width:8px; height:8px; border-radius:50%; flex-shrink:0; position:relative; }
+        .s-ok   { background:#34d399; box-shadow:0 0 10px #34d399aa; }
+        .s-wait { background:#fbbf24; animation:sblink 1.1s ease-in-out infinite; }
+        .s-bad  { background:#f87171; box-shadow:0 0 10px #f87171aa; animation:sblink 0.9s ease-in-out infinite; }
+        .s-unk  { background:#374151; }
+        /* 状态点脉冲环 */
+        .s-ok::after, .s-bad::after {
+            content:''; position:absolute; inset:-4px; border-radius:50%;
+            animation: sdot-ring 2s ease-out infinite;
+        }
+        .s-ok::after  { border: 1px solid rgba(52,211,153,0.5); }
+        .s-bad::after { border: 1px solid rgba(248,113,113,0.5); }
+        @keyframes sdot-ring { 0%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(2.2)} }
+        @keyframes sblink { 0%,100%{opacity:1} 50%{opacity:.25} }
+        #hap-stext { flex:1; font-size:10.5px; font-weight:600; color:rgba(255,255,255,0.45); }
+        #hap-stime { font-size:10px; color:rgba(255,255,255,0.18); font-family:monospace; }
 
         /* ══════ 折叠区 ══════ */
         #hap-collapsible { overflow:hidden; }
 
         /* ══════ Tab 导航 ══════ */
         #hap-tabs {
-            display: flex; padding: 10px 12px; gap: 6px;
+            display: flex; padding: 8px 10px; gap: 4px;
             background: rgba(255,255,255,0.015);
             border-bottom: 1px solid rgba(255,255,255,0.04);
+            position: relative;
         }
         .htab {
-            flex:1; text-align:center; padding:9px 2px; font-size:11px; font-weight:800;
-            cursor:pointer; border-radius:12px; color:rgba(255,255,255,0.28);
-            transition: all .22s; border:1px solid transparent; letter-spacing:.2px;
+            flex:1; text-align:center; padding:9px 4px; font-size:10.5px; font-weight:800;
+            cursor:pointer; border-radius:11px; color:rgba(255,255,255,0.25);
+            transition: all .28s cubic-bezier(.34,1.56,.64,1);
+            border:1px solid transparent; letter-spacing:.2px;
+            position: relative;
         }
-        .htab.on { background:rgba(99,102,241,0.14); color:#a5b4fc; border-color:rgba(99,102,241,0.28); }
-        .htab:hover:not(.on) { color:rgba(255,255,255,0.55); background:rgba(255,255,255,0.04); }
+        .htab.on {
+            background: linear-gradient(135deg, rgba(99,102,241,0.18), rgba(139,92,246,0.12));
+            color:#c4b5fd;
+            border-color:rgba(99,102,241,0.3);
+            box-shadow: 0 0 0 1px rgba(99,102,241,0.15) inset, 0 4px 12px rgba(99,102,241,0.15);
+        }
+        /* 激活 Tab 底部高亮线 */
+        .htab.on::after {
+            content:''; position:absolute; bottom:-1px; left:20%; right:20%;
+            height:2px; border-radius:99px;
+            background: linear-gradient(90deg,#6366f1,#a78bfa);
+            box-shadow: 0 0 8px rgba(99,102,241,0.8);
+        }
+        .htab:hover:not(.on) { color:rgba(255,255,255,0.5); background:rgba(255,255,255,0.04); transform:translateY(-1px); }
 
         /* ══════ 内容区 ══════ */
-        #hap-body { padding:16px; }
+        #hap-body { padding:14px; }
         .hpane { display:none; }
-        .hpane.on { display:block; animation:paneIn .3s ease; }
-        @keyframes paneIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+        .hpane.on { display:block; animation:paneIn .32s cubic-bezier(.34,1.2,.64,1); }
+        @keyframes paneIn { from{opacity:0;transform:translateY(8px) scale(.98)} to{opacity:1;transform:none} }
 
         /* ══════ 指标卡片 ══════ */
         .mc {
-            background: rgba(255,255,255,0.03); border-radius:16px; padding:14px;
-            margin-bottom:12px; border:1px solid rgba(255,255,255,0.06);
+            background: rgba(255,255,255,0.025);
+            border-radius:18px; padding:14px;
+            margin-bottom:10px;
+            border:1px solid rgba(255,255,255,0.055);
+            transition: border-color .25s, background .25s;
         }
+        .mc:hover { background:rgba(255,255,255,0.035); border-color:rgba(99,102,241,0.2); }
         .mc:last-child { margin-bottom:0; }
         .mc-hd {
-            font-size:9px; font-weight:900; letter-spacing:1.5px; text-transform:uppercase;
-            color:rgba(255,255,255,0.25); margin-bottom:10px;
+            font-size:9px; font-weight:900; letter-spacing:1.6px; text-transform:uppercase;
+            color:rgba(255,255,255,0.22); margin-bottom:11px;
             display:flex; align-items:center; gap:7px;
         }
-        .mc-hd::after { content:''; flex:1; height:1px; background:rgba(255,255,255,0.05); }
+        .mc-hd::after { content:''; flex:1; height:1px; background:linear-gradient(90deg,rgba(255,255,255,0.07),transparent); }
         .mc-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; }
         .mc-row:last-child { margin-bottom:0; }
-        .mclb { font-size:11px; color:rgba(255,255,255,0.35); font-weight:500; }
-        .mcvl { font-size:11px; font-weight:700; color:rgba(255,255,255,0.82); display:flex; align-items:center; gap:5px; }
+        .mclb { font-size:11px; color:rgba(255,255,255,0.32); font-weight:500; }
+        .mcvl { font-size:11px; font-weight:700; color:rgba(255,255,255,0.8); display:flex; align-items:center; gap:5px; }
 
         /* 徽章 */
         .bx { padding:2px 8px; border-radius:6px; font-size:9px; font-weight:900; white-space:nowrap; }
-        .bg { background:rgba(52,211,153,0.12); color:#34d399; border:1px solid rgba(52,211,153,0.18); }
-        .bb { background:rgba(99,102,241,0.12); color:#a5b4fc; border:1px solid rgba(99,102,241,0.22); }
-        .br { background:rgba(248,113,113,0.12); color:#f87171; border:1px solid rgba(248,113,113,0.18); }
-        .by { background:rgba(251,191,36,0.12);  color:#fbbf24; border:1px solid rgba(251,191,36,0.18); }
-        .bw { background:rgba(255,255,255,0.06);  color:rgba(255,255,255,0.38); border:1px solid rgba(255,255,255,0.07); }
-        .bp { background:rgba(168,85,247,0.12); color:#c084fc; border:1px solid rgba(168,85,247,0.22); }
+        .bg { background:rgba(52,211,153,0.1);  color:#34d399; border:1px solid rgba(52,211,153,0.2); }
+        .bb { background:rgba(99,102,241,0.1);  color:#a5b4fc; border:1px solid rgba(99,102,241,0.25); }
+        .br { background:rgba(248,113,113,0.1); color:#f87171; border:1px solid rgba(248,113,113,0.2); }
+        .by { background:rgba(251,191,36,0.1);  color:#fbbf24; border:1px solid rgba(251,191,36,0.2); }
+        .bw { background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.35); border:1px solid rgba(255,255,255,0.07); }
+        .bp { background:rgba(168,85,247,0.1);  color:#c084fc; border:1px solid rgba(168,85,247,0.25); }
 
         /* 内存进度条 */
-        .pg-w { width:72px; height:4px; background:rgba(255,255,255,0.07); border-radius:99px; overflow:hidden; }
-        .pg-f { height:100%; border-radius:99px; transition:width .6s ease; }
-        .pggreen { background:linear-gradient(90deg,#34d399,#10b981); }
-        .pgyell  { background:linear-gradient(90deg,#fbbf24,#f59e0b); }
-        .pgred   { background:linear-gradient(90deg,#f87171,#ef4444); }
+        .pg-w { width:72px; height:4px; background:rgba(255,255,255,0.06); border-radius:99px; overflow:hidden; }
+        .pg-f { height:100%; border-radius:99px; transition:width .7s cubic-bezier(.4,0,.2,1); }
+        .pggreen { background:linear-gradient(90deg,#10b981,#34d399); box-shadow:0 0 6px rgba(52,211,153,0.5); }
+        .pgyell  { background:linear-gradient(90deg,#f59e0b,#fbbf24); box-shadow:0 0 6px rgba(251,191,36,0.5); }
+        .pgred   { background:linear-gradient(90deg,#ef4444,#f87171); box-shadow:0 0 6px rgba(248,113,113,0.5); }
 
         /* ══════ 工具网格 ══════ */
-        .tg { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-bottom:12px; }
+        .tg { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
         .tgi {
-            background:rgba(255,255,255,0.04); border-radius:14px; padding:13px 6px;
-            text-align:center; cursor:pointer; border:1px solid rgba(255,255,255,0.05);
-            transition:all .22s;
+            background:rgba(255,255,255,0.035);
+            border-radius:16px; padding:14px 6px;
+            text-align:center; cursor:pointer;
+            border:1px solid rgba(255,255,255,0.05);
+            transition:all .28s cubic-bezier(.34,1.56,.64,1);
+            position: relative; overflow: hidden;
         }
+        /* Shimmer overlay on tool cards */
+        .tgi::before {
+            content:''; position:absolute; inset:0;
+            background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%);
+            transform: translateX(-100%); transition: transform .5s;
+        }
+        .tgi:hover::before { transform: translateX(100%); }
         .tgi:hover {
-            background:rgba(99,102,241,0.11); border-color:rgba(99,102,241,0.3);
-            transform:translateY(-3px); box-shadow:0 8px 20px rgba(99,102,241,0.18);
+            background:rgba(99,102,241,0.12);
+            border-color:rgba(99,102,241,0.35);
+            transform:translateY(-4px) scale(1.03);
+            box-shadow: 0 10px 28px rgba(99,102,241,0.22), 0 0 0 1px rgba(99,102,241,0.2) inset;
         }
-        .tgi:active { transform:translateY(-1px); }
-        .tgi-ico { font-size:19px; margin-bottom:5px; }
-        .tgi-lb  { font-size:10px; font-weight:700; color:rgba(255,255,255,0.45); }
+        .tgi:active { transform:translateY(-1px) scale(1.01); }
+        .tgi-ico { font-size:20px; margin-bottom:5px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3)); transition:.28s; }
+        .tgi:hover .tgi-ico { transform:scale(1.15); }
+        .tgi-lb  { font-size:10px; font-weight:700; color:rgba(255,255,255,0.4); transition:.28s; }
+        .tgi:hover .tgi-lb { color:rgba(165,180,252,0.85); }
 
-        /* 时钟 */
-        #hap-clock { font-size:30px; font-weight:900; color:#fff; text-align:center; margin-bottom:3px; letter-spacing:1px; font-variant-numeric:tabular-nums; }
-        #hap-date  { font-size:10.5px; color:rgba(255,255,255,0.3); text-align:center; margin-bottom:14px; }
+        /* 时钟 — 渐变文字 */
+        #hap-clock {
+            font-size:32px; font-weight:900; text-align:center;
+            margin-bottom:2px; letter-spacing:2px; font-variant-numeric:tabular-nums;
+            background: linear-gradient(135deg, #e0e7ff 0%, #a5b4fc 50%, #c4b5fd 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 0 20px rgba(165,180,252,0.35));
+        }
+        #hap-date  { font-size:10px; color:rgba(255,255,255,0.28); text-align:center; margin-bottom:13px; }
 
         /* 操作按钮 */
         .hbtn {
-            width:100%; padding:13px 16px; border-radius:14px; border:none; cursor:pointer;
-            font-size:12.5px; font-weight:800; transition:all .22s;
-            display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:9px;
+            width:100%; padding:13px 16px; border-radius:15px; border:none; cursor:pointer;
+            font-size:12.5px; font-weight:800; transition:all .28s cubic-bezier(.34,1.2,.64,1);
+            display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:8px;
+            position:relative; overflow:hidden;
         }
         .hbtn:last-child { margin-bottom:0; }
+        /* Button shimmer */
+        .hbtn::after {
+            content:''; position:absolute;
+            top:0; left:-100%; width:60%; height:100%;
+            background: linear-gradient(105deg, transparent, rgba(255,255,255,0.15), transparent);
+            transition: left .5s ease;
+        }
+        .hbtn:hover::after { left:140%; }
         .hbtn:hover { transform:translateY(-2px); }
-        .hbtn:active { transform:translateY(0); }
-        .btn-ind { background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; box-shadow:0 4px 18px rgba(99,102,241,0.38); }
-        .btn-ind:hover { box-shadow:0 8px 28px rgba(99,102,241,0.52); }
-        .btn-gh  { background:rgba(255,255,255,0.055); color:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.07); }
-        .btn-gh:hover { background:rgba(255,255,255,0.09); color:#fff; }
+        .hbtn:active { transform:translateY(0) scale(.98); }
+        .btn-ind {
+            background:linear-gradient(135deg,#5b5ef4,#7c3aed);
+            color:#fff;
+            box-shadow:0 4px 20px rgba(99,102,241,0.42), 0 1px 0 rgba(255,255,255,0.15) inset;
+        }
+        .btn-ind:hover { box-shadow:0 8px 32px rgba(99,102,241,0.58); }
+        .btn-gh  {
+            background:rgba(255,255,255,0.045); color:rgba(255,255,255,0.55);
+            border:1px solid rgba(255,255,255,0.07);
+        }
+        .btn-gh:hover { background:rgba(255,255,255,0.08); color:#fff; border-color:rgba(255,255,255,0.12); }
 
         /* ══════ 版本时间轴 ══════ */
         .tl-item { display:flex; gap:12px; margin-bottom:13px; }
         .tl-item:last-child { margin-bottom:0; }
         .tl-spine { display:flex; flex-direction:column; align-items:center; }
-        .tl-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; margin-top:2px; }
-        .tl-ln  { width:1px; flex:1; background:rgba(255,255,255,0.06); margin-top:4px; min-height:18px; }
+        .tl-dot {
+            width:9px; height:9px; border-radius:50%; flex-shrink:0; margin-top:2px;
+            position:relative;
+        }
+        .tl-dot::after {
+            content:''; position:absolute; inset:-3px; border-radius:50%;
+            border:1px solid currentColor; opacity:0.25;
+        }
+        .tl-ln  { width:1px; flex:1; background:linear-gradient(180deg,rgba(255,255,255,0.08),transparent); margin-top:4px; min-height:18px; }
         .tl-item:last-child .tl-ln { display:none; }
-        .tl-v { font-size:11px; font-weight:800; color:rgba(255,255,255,0.8); margin-bottom:2px; }
-        .tl-d { font-size:9.5px; color:rgba(255,255,255,0.25); margin-bottom:3px; }
-        .tl-c { font-size:10px; color:rgba(255,255,255,0.45); line-height:1.55; }
+        .tl-v { font-size:11px; font-weight:800; color:rgba(255,255,255,0.82); margin-bottom:2px; }
+        .tl-d { font-size:9.5px; color:rgba(255,255,255,0.22); margin-bottom:3px; }
+        .tl-c { font-size:10px; color:rgba(255,255,255,0.42); line-height:1.6; }
 
-        /* ══════ 迷你悬浮球 (min 态) ══════ */
+        /* ══════ 迷你悬浮球 ══════ */
         #hap-mini {
             display:none;
-            width:64px; height:64px; border-radius:20px; cursor:pointer;
-            background: linear-gradient(135deg,#302b63,#0f0c29);
-            border:1px solid rgba(99,102,241,0.35);
-            box-shadow: 0 8px 30px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.12) inset;
+            width:64px; height:64px; border-radius:22px; cursor:pointer;
+            background: linear-gradient(145deg,#1a1540,#0a0820);
+            border:1px solid rgba(99,102,241,0.4);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(99,102,241,0.15) inset;
             flex-direction:column; align-items:center; justify-content:center; gap:4px;
-            transition:all .3s;
+            transition:all .35s cubic-bezier(.34,1.56,.64,1);
+            position:relative; overflow:hidden;
         }
+        /* 迷你球脉冲光环 */
+        #hap-mini::before {
+            content:''; position:absolute; inset:-1px; border-radius:22px;
+            background: conic-gradient(from 0deg, #6366f1, #8b5cf6, #6366f1);
+            animation: mini-spin 3s linear infinite;
+            opacity: 0.4;
+            z-index: 0;
+        }
+        #hap-mini::after {
+            content:''; position:absolute; inset:1px; border-radius:21px;
+            background: linear-gradient(145deg,#1a1540,#0a0820);
+            z-index: 0;
+        }
+        #hap-mini > * { position:relative; z-index:1; }
+        @keyframes mini-spin { to { transform: rotate(360deg); } }
         #hap-root.min #hap-mini  { display:flex; }
         #hap-root.min #hap-inner { display:none; }
         .mini-dot { width:8px; height:8px; border-radius:50%; }
         .mini-ver { font-size:9px; font-weight:900; color:rgba(255,255,255,0.5); letter-spacing:.5px; }
-        #hap-mini:hover { transform:scale(1.08); box-shadow:0 12px 40px rgba(99,102,241,0.4); }
+        #hap-mini:hover { transform:scale(1.1) rotate(-3deg); box-shadow:0 16px 44px rgba(99,102,241,0.5); }
 
-        /* ══════ 通知 ══════ */
+        /* ══════ Toast 通知 ══════ */
         #hap-notifs {
-            position:fixed; top:28px; right:28px; z-index:2147483647;
-            display:flex; flex-direction:column; align-items:flex-end; pointer-events:none;
-            gap:8px;
+            position:fixed; top:24px; right:24px; z-index:2147483647;
+            display:flex; flex-direction:column; align-items:flex-end;
+            pointer-events:none; gap:8px;
         }
         .hap-toast {
-            padding:13px 20px; max-width:340px;
-            background:rgba(13,15,24,0.97); color:rgba(255,255,255,0.88);
-            border-left:4px solid; border-radius:16px;
-            box-shadow:0 20px 60px rgba(0,0,0,0.5);
-            font-size:13px; font-weight:700;
-            pointer-events:auto; opacity:0; transform:translateX(30px);
-            transition:all .42s cubic-bezier(0.175,0.885,0.32,1.275);
-            backdrop-filter:blur(40px); white-space:nowrap;
-            border: 1px solid rgba(255,255,255,0.05); border-left-width:4px;
+            display:flex; align-items:center; gap:0;
+            max-width:340px; min-width:200px;
+            background:rgba(10,11,20,0.97);
+            border-radius:16px;
+            box-shadow:0 20px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06) inset;
+            pointer-events:auto; opacity:0; transform:translateX(40px) scale(.94);
+            transition:all .44s cubic-bezier(0.175,0.885,0.32,1.275);
+            backdrop-filter:blur(50px);
+            overflow:hidden;
         }
-        .hap-toast.in { opacity:1; transform:translateX(0); }
+        .hap-toast.in { opacity:1; transform:translateX(0) scale(1); }
+        /* 左侧色块 */
+        .hap-toast-bar {
+            width:4px; align-self:stretch; flex-shrink:0;
+            border-radius:0;
+        }
+        .hap-toast-body {
+            padding:12px 16px 12px 12px;
+            font-size:12.5px; font-weight:700; color:rgba(255,255,255,0.85);
+            line-height:1.4;
+        }
 
         /* ══════ 更新通知面板 ══════ */
         #hap-upd-overlay {
@@ -391,8 +521,14 @@
                 if (!box) { box = document.createElement('div'); box.id='hap-notifs'; document.body.appendChild(box); }
                 const t = document.createElement('div');
                 t.className = 'hap-toast';
-                t.style.borderLeftColor = C[type] || C.info;
-                t.textContent = msg;
+                // 新结构：左色条 + 文字区
+                const bar = document.createElement('div');
+                bar.className = 'hap-toast-bar';
+                bar.style.background = C[type] || C.info;
+                const body = document.createElement('div');
+                body.className = 'hap-toast-body';
+                body.textContent = msg;
+                t.appendChild(bar); t.appendChild(body);
                 box.prepend(t);
                 requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('in')));
                 setTimeout(() => { t.classList.remove('in'); setTimeout(() => t.remove(), 500); }, dur);
