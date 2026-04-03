@@ -283,6 +283,102 @@
             border: 1px solid rgba(255,255,255,0.05); border-left-width:4px;
         }
         .hap-toast.in { opacity:1; transform:translateX(0); }
+
+        /* ══════ 更新通知面板 ══════ */
+        #hap-upd-overlay {
+            position:fixed; inset:0; z-index:2147483645;
+            background:rgba(0,0,0,0.72);
+            backdrop-filter:blur(25px) saturate(160%);
+            display:flex; align-items:center; justify-content:center;
+            opacity:0; transition:opacity .35s ease;
+            pointer-events:none;
+        }
+        #hap-upd-overlay.show { opacity:1; pointer-events:all; }
+        #hap-upd-panel {
+            width:400px; max-width:92vw;
+            background:rgba(13,15,24,0.97);
+            border-radius:26px;
+            border:1px solid rgba(255,255,255,0.07);
+            box-shadow:0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.08) inset;
+            overflow:hidden;
+            backdrop-filter:blur(50px) saturate(200%);
+            transform:scale(0.88) translateY(20px);
+            transition:transform .4s cubic-bezier(0.175,0.885,0.32,1.275);
+        }
+        #hap-upd-overlay.show #hap-upd-panel { transform:scale(1) translateY(0); }
+
+        /* 更新面板 — 标题栏（与 #hap-header 一致）*/
+        .upd-header {
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 60%, #1e1b4b 100%);
+            padding:18px 20px 14px;
+            position:relative; overflow:hidden;
+        }
+        .upd-header::after {
+            content:'';
+            position:absolute; inset:0;
+            background: radial-gradient(ellipse at top left, rgba(99,102,241,0.25), transparent 60%),
+                        radial-gradient(ellipse at bottom right, rgba(168,85,247,0.15), transparent 60%);
+        }
+        .upd-badge-row { display:flex; gap:6px; margin-bottom:10px; position:relative; z-index:1; align-items:center; }
+        .upd-h2  { font-size:15px; font-weight:900; color:#fff; position:relative; z-index:1; margin-bottom:3px; letter-spacing:-.3px; }
+        .upd-sub { font-size:10px; color:rgba(255,255,255,0.35); position:relative; z-index:1; }
+
+        /* 更新面板 — 版本差异行（内嵌状态条风格）*/
+        .upd-sbar {
+            display:flex; align-items:center; gap:9px;
+            padding:9px 20px;
+            background:rgba(255,255,255,0.025);
+            border-bottom:1px solid rgba(255,255,255,0.04);
+        }
+        .upd-ver-chip {
+            display:flex; gap:10px; align-items:center;
+            flex:1;
+        }
+        .upd-ver-sep { font-size:14px; color:rgba(255,255,255,0.2); }
+
+        /* 更新面板 — Body（与 hap-body 一致）*/
+        .upd-body { padding:14px 16px 16px; }
+
+        /* 更新面板 — changelog 卡片（复用 .mc 风格）*/
+        .upd-mc {
+            background:rgba(255,255,255,0.03); border-radius:16px; padding:14px;
+            margin-bottom:12px; border:1px solid rgba(255,255,255,0.06);
+        }
+        .upd-mc-hd {
+            font-size:9px; font-weight:900; letter-spacing:1.5px; text-transform:uppercase;
+            color:rgba(255,255,255,0.25); margin-bottom:10px;
+            display:flex; align-items:center; gap:7px;
+        }
+        .upd-mc-hd::after { content:''; flex:1; height:1px; background:rgba(255,255,255,0.05); }
+
+        /* 更新面板 — 时间轴（完全复用 .tl-* 风格）*/
+        .upd-tl-wrap {
+            max-height:200px; overflow-y:auto;
+            padding-right:4px;
+        }
+        .upd-tl-wrap::-webkit-scrollbar { width:3px; }
+        .upd-tl-wrap::-webkit-scrollbar-track { background:transparent; }
+        .upd-tl-wrap::-webkit-scrollbar-thumb { background:rgba(99,102,241,0.4); border-radius:99px; }
+
+        /* 更新面板 — 按钮区 */
+        .upd-btns { display:flex; gap:9px; }
+        .upd-btn-ok {
+            flex:2; padding:13px 16px; border:none; border-radius:14px; cursor:pointer;
+            background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff;
+            font-size:12.5px; font-weight:800; transition:all .22s;
+            display:flex; align-items:center; justify-content:center; gap:8px;
+            box-shadow:0 4px 18px rgba(99,102,241,0.38);
+        }
+        .upd-btn-ok:hover { box-shadow:0 8px 28px rgba(99,102,241,0.52); transform:translateY(-2px); }
+        .upd-btn-ok:active { transform:translateY(0); }
+        .upd-btn-skip {
+            flex:1; padding:13px 16px; border:1px solid rgba(255,255,255,0.07);
+            border-radius:14px; cursor:pointer;
+            background:rgba(255,255,255,0.055); color:rgba(255,255,255,0.6);
+            font-size:12px; font-weight:700; transition:all .22s;
+        }
+        .upd-btn-skip:hover { background:rgba(255,255,255,0.09); color:#fff; }
+        .upd-btn-skip:active { transform:translateY(0); }
     `);
 
     // ===================== 通知模块 =====================
@@ -501,6 +597,8 @@
                         </div>
                         <button class="hbtn btn-ind" id="hap-btn-update">🚀 检查 GitHub 云端更新</button>
                         <button class="hbtn btn-gh" id="hap-btn-diag">🛡️ 执行全系统诊断自检</button>
+
+                    <!-- 更新通知遮罩 (初始隐藏，挂在 body 外 inline，避免被面板 overflow hidden 裁切) -->
                     </div>
 
                     <!-- 监控面板 -->
@@ -618,6 +716,9 @@
         document.getElementById('hap-btn-upd2').onclick   = () => checkUpdate(true);
         document.getElementById('hap-btn-repo').onclick   = () => GM_openInTab(CONFIG.REPO_URL);
 
+        // 初始化更新面板 DOM (挂载到 body，不受 overflow:hidden 限制)
+        initUpdatePanel();
+
         // 时钟
         const tick = () => {
             const n = new Date();
@@ -640,6 +741,104 @@
         }
     }
 
+    // ===================== 更新通知面板 =====================
+    const TAG_BADGE_MAP = { MAJOR:'bb', FEATURE:'bg', FIX:'by', UI:'bw' };
+    const DOT_COLORS    = ['#6366f1','#34d399','#fbbf24','#f87171','#c084fc'];
+
+    function initUpdatePanel() {
+        if (document.getElementById('hap-upd-overlay')) return;
+        const ol = document.createElement('div');
+        ol.id = 'hap-upd-overlay';
+        ol.innerHTML = '<div id="hap-upd-panel"></div>';
+        document.body.appendChild(ol);
+    }
+
+    function showUpdatePanel(remoteVer, changelog) {
+        initUpdatePanel();
+        const overlay = document.getElementById('hap-upd-overlay');
+        const panel   = document.getElementById('hap-upd-panel');
+
+        // 时间轴日志 HTML（完全复用 .tl-* 风格，与版本面板一致）
+        const tlHTML = changelog.map((l, i) => `
+            <div class="tl-item">
+                <div class="tl-spine">
+                    <div class="tl-dot" style="background:${DOT_COLORS[i%5]};box-shadow:0 0 8px ${DOT_COLORS[i%5]}55"></div>
+                    <div class="tl-ln"></div>
+                </div>
+                <div style="flex:1;padding-bottom:3px">
+                    <div class="tl-v">v${l.v} <span class="bx ${TAG_BADGE_MAP[l.tag]||'bw'}" style="font-size:8px">${l.tag}</span></div>
+                    <div class="tl-d">${l.d}</div>
+                    <div class="tl-c">${l.c}</div>
+                </div>
+            </div>
+        `).join('');
+
+        panel.innerHTML = `
+            <!-- 标题栏：与 #hap-header 完全一致 -->
+            <div class="upd-header">
+                <div class="h-top">
+                    <div class="upd-badge-row">
+                        <span class="hbv">v${remoteVer}</span>
+                        <span class="bx br" style="font-size:9px;font-weight:900;padding:3px 9px;border-radius:7px">🚀 NEW</span>
+                        <span class="hbc">${CONFIG.CHANNEL}</span>
+                    </div>
+                    <span class="h-tog" id="upd-close-x" style="cursor:pointer">✕</span>
+                </div>
+                <div class="h-name">☁️ 发现云端维护更新</div>
+                <div class="h-sub">${CONFIG.AUTHOR} · ${CONFIG.BUILD}</div>
+            </div>
+
+            <!-- 版本状态条：仿 #hap-sbar -->
+            <div class="upd-sbar">
+                <span class="sdot s-bad"></span>
+                <span class="upd-ver-chip">
+                    <span class="bx bw" style="font-size:10px">本地 v${CONFIG.VERSION}</span>
+                    <span class="upd-ver-sep">→</span>
+                    <span class="bx bb" style="font-size:10px">最新 v${remoteVer}</span>
+                </span>
+                <span class="bx br" style="font-size:9px">需要更新</span>
+            </div>
+
+            <!-- Body -->
+            <div class="upd-body">
+                <!-- 更新日志卡片（.mc 风格）-->
+                <div class="upd-mc">
+                    <div class="upd-mc-hd">📋 版本更新日志</div>
+                    <div class="upd-tl-wrap">
+                        ${tlHTML}
+                    </div>
+                </div>
+                <!-- 按钮区（.hbtn 风格）-->
+                <div class="upd-btns">
+                    <button class="upd-btn-ok" id="upd-go">⬆️ 立即前往 GitHub 更新</button>
+                    <button class="upd-btn-skip" id="upd-skip">稍后</button>
+                </div>
+            </div>
+        `;
+
+        requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('show')));
+
+        document.getElementById('upd-go').onclick     = () => { overlay.classList.remove('show'); GM_openInTab(CONFIG.UPDATE_URL, { active: true, insert: true }); };
+        document.getElementById('upd-skip').onclick   = () => overlay.classList.remove('show');
+        document.getElementById('upd-close-x').onclick= () => overlay.classList.remove('show');
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove('show'); };
+    }
+
+    // ===================== 状态条更新 =====================
+    function updateStatusBar(type, text) {
+        const dot  = document.getElementById('hap-sdot');
+        const txt  = document.getElementById('hap-stext');
+        const mDot = document.getElementById('hap-mini-dot');
+        if (!dot || !txt) return;
+        dot.className = 'sdot ' + ({ok:'s-ok', wait:'s-wait', bad:'s-bad', unk:'s-unk'}[type] || 's-unk');
+        txt.textContent = text;
+        const dotColor = {ok:'#34d399', wait:'#fbbf24', bad:'#f87171', unk:'#4b5563'}[type] || '#4b5563';
+        if (mDot) {
+            mDot.style.background  = dotColor;
+            mDot.style.boxShadow   = (type==='ok'||type==='bad') ? `0 0 8px ${dotColor}AA` : 'none';
+        }
+    }
+
     // ===================== 更新检测 =====================
     function checkUpdate(manual=false) {
         updateStatusBar('wait', '正在连接 GitHub 全球维护镜像...');
@@ -657,7 +856,8 @@
                         if (isNewer(rv, CONFIG.VERSION)) {
                             if (vS) vS.innerHTML=`<span class="bx br">🔴 发现新版本</span>`;
                             updateStatusBar('bad', `⚠️ 发现维护补丁 v${rv}，建议立即更新`);
-                            if (confirm(`🚀 发现云端维护版本 v${rv}\n当前本地版本 v${CONFIG.VERSION}\n\n是否立即跳转 GitHub 同步？`)) GM_openInTab(CONFIG.UPDATE_URL);
+                            // 使用 Premium 风格面板替代原生 confirm()
+                            showUpdatePanel(rv, CONFIG.CHANGELOG);
                         } else {
                             if (vS) vS.innerHTML=`<span class="bx bg">✅ 已是最新</span>`;
                             const now=new Date().toLocaleString('zh-CN');
