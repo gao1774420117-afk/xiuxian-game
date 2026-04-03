@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         远程更新与实用工具助手
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0
-// @description  Premium 级全能助手 — 专业仪表盘·深度监控·超级工具集·GitHub 自动同步 (精修 2.1)
+// @version      2.2.0
+// @description  Premium 级全能助手 — 专业仪表盘·深度监控·超级工具集·GitHub 自动同步 (精修 2.2)
 // @author       gao1774420117
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
@@ -29,12 +29,13 @@
         UPDATE_URL: 'https://github.com/gao1774420117-afk/xiuxian-game/raw/refs/heads/main/remote-update-script.user.js',
         REPO_URL: 'https://github.com/gao1774420117-afk/xiuxian-game',
         VERSION: GM_info.script.version,
-        BUILD: '20260403-RELEASE',
+        BUILD: '20260403-R2',
         CHANNEL: 'STABLE',
         AUTHOR: 'gao1774420117',
         CONTACT: 'GitHub · TapTap',
         IS_MIN: GM_getValue('is_minimized', false),
         CHANGELOG: [
+            { v: '2.2.0', d: '2026/04/03', tag: 'UI',    c: '更新通知弹窗与主菜单风格完全统一：相同标题栏渐变、状态条版本对比、卡片式日志时间轴，新增右上角 ✕ 关闭按钮。' },
             { v: '2.1.0', d: '2026/04/03', tag: 'FIX',   c: '修复 CONFIG_MGRINF 时序 Bug、暗黑模式计数器问题及拖拽事件冲突；全新迷你悬浮球设计。' },
             { v: '2.0.0', d: '2026/04/03', tag: 'MAJOR',  c: '全面重构 Premium UI 2.0：深度仪表盘、动态指标卡、版本时间轴、加密状态显示。' },
             { v: '1.8.0', d: '2026/04/03', tag: 'FEATURE',c: '系统深度监控上线：内存追踪、DOM 拓扑、环境感知。' },
