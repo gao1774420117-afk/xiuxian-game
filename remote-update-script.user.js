@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         远程更新与实用工具助手
 // @namespace    http://tampermonkey.net/
-// @version      3.2.0
+// @version      3.2.1
 // @description  Premium 级全能助手 — 专业仪表盘·深度监控·超级工具集·GitHub 自动同步 (v3.0 旗舰版)
 // @author       gao1774420117
 // @match        *://*/*
@@ -44,8 +44,8 @@
         TAB_MODE: GM_getValue('tab_mode', 'both'), // icon, text, both
         POS: GM_getValue('pos', { x: 28, y: 28, from: 'bottom-right' }),
         CHANGELOG: [
-            { v: '3.2.0', d: '2026/04/03', tag: 'MAJOR',  c: '旗舰版大升级：新增 12+ 项高级工具、30+ 面板图标達成、剪贴板自动化集成、4 列专业仪表盘、Monitor 性能统计增强。' },
-            { v: '3.1.1', d: '2026/04/03', tag: 'HOTFIX', c: '热修复：恢复随手贴拖动功能、优化 JSON 剪贴板识别、修复页签切换动画。' }
+            { v: '3.2.1', d: '2026/04/03', tag: 'HOTFIX', c: '综合修复：删除重复 Copy监听器、修复安全面板 ID 冲突、添加 STATE.scrollTimer、Tab 过渡采用 visibility 方案、UI 美化升级。' },
+            { v: '3.2.0', d: '2026/04/03', tag: 'MAJOR',  c: '旗舰版大升级：30+ 功能图标、剪贴板自动化、图像提取、表格 CSV、媒体嗅探等 12+ 项新工具。' }
         ]
     };
 
@@ -61,6 +61,7 @@
         reqLogs: [],
         clipHistory: GM_getValue('clip_hist', []),
         fpsInterval: null,
+        scrollTimer: null,
         chart: null,
         history: GM_getValue('h_data', [])
     };
@@ -77,20 +78,9 @@
         STATE.reqs++;
         return originalXHR.apply(this, arguments);
     };
-    window.addEventListener('error', e => { STATE.errors++; });
-    window.addEventListener('copy', () => {
-        setTimeout(async () => {
-            try {
-                const text = await navigator.clipboard.readText();
-                if (text && !STATE.clipHistory.includes(text)) {
-                    STATE.clipHistory.unshift(text);
-                    if (STATE.clipHistory.length > 20) STATE.clipHistory.pop();
-                    GM_setValue('clip_hist', STATE.clipHistory);
-                }
-            } catch(e) {}
-        }, 100);
-    });
-    window.addEventListener('unhandledrejection', e => { STATE.errors++; });
+    window.addEventListener('error', () => { STATE.errors++; });
+    window.addEventListener('unhandledrejection', () => { STATE.errors++; });
+    // 剪贴板历史自动记录 (单一监听器)
     document.addEventListener('copy', () => {
         setTimeout(async () => {
             try {
@@ -101,7 +91,7 @@
                     GM_setValue('clip_hist', STATE.clipHistory);
                 }
             } catch(e) {}
-        }, 100);
+        }, 150);
     });
 
     // ===================== 通知模块 =====================
@@ -275,24 +265,33 @@
         #hap-collapsible::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
         #hap-collapsible::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
-        .hpane { display: none; width: 100%; opacity: 0; transform: translateY(10px); transition: 0.3s; }
-        .hpane.on { display: block; opacity: 1; transform: none; }
+        .hpane { 
+            display: block; width: 100%; opacity: 0; transform: translateY(8px); 
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            visibility: hidden; pointer-events: none; height: 0; overflow: hidden;
+        }
+        .hpane.on { opacity: 1; transform: none; visibility: visible; pointer-events: auto; height: auto; overflow: visible; }
 
         /* Card System */
         .mc { 
-            background: rgba(255,255,255,0.03); border-radius: 20px; padding: 16px; margin-bottom: 12px; 
-            border: 1px solid rgba(255,255,255,0.05); transition: 0.2s;
+            background: rgba(255,255,255,0.04); border-radius: 20px; padding: 18px; margin-bottom: 12px; 
+            border: 1px solid rgba(255,255,255,0.07); transition: 0.2s;
         }
+        .mc:hover { border-color: rgba(var(--hap-rgb), 0.2); background: rgba(255,255,255,0.05); }
         .mc-hd { 
-            font-size: 10px; font-weight: 800; color: rgba(255,255,255,0.25); 
-            margin-bottom: 12px; display: flex; align-items: center; gap: 8px; letter-spacing: 0.05em;
+            font-size: 10px; font-weight: 800; color: rgba(255,255,255,0.4); 
+            margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.1em;
+            display: flex; align-items: center; gap: 8px;
         }
+        .mc-hd::before { content: ''; display: inline-block; width: 3px; height: 12px; background: var(--hap-main); border-radius: 2px; }
         .mc-row { 
             display: flex; justify-content: space-between; align-items: center; 
-            margin-bottom: 8px; font-size: 13px; 
+            margin-bottom: 10px; font-size: 12px; 
         }
-        .mclb { color: rgba(255,255,255,0.45); font-weight: 400; } 
-        .mcvl { color: rgba(255,255,255,0.85); font-weight: 600; }
+        .mclb { color: rgba(255,255,255,0.5); font-weight: 400; } 
+        .mcvl { color: rgba(255,255,255,0.9); font-weight: 600; }
+        .pgred { color: #ff5252 !important; }
+        .pggreen { color: #00c853 !important; }
 
         /* Tools Grid */
         .tg { 
@@ -300,28 +299,32 @@
             max-height: 400px; overflow-y: auto; padding-right: 4px;
         }
         .tgi { 
-            background: rgba(255,255,255,0.02); border-radius: 18px; padding: 14px 4px; 
-            text-align: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.05); 
-            transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: rgba(255,255,255,0.03); border-radius: 16px; padding: 14px 6px 12px; 
+            text-align: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.06); 
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); position: relative; overflow: hidden;
         }
+        .tgi::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 50% 0%, rgba(var(--hap-rgb),0.12), transparent 70%); opacity: 0; transition: 0.3s; }
+        .tgi:hover::before { opacity: 1; }
         .tgi:hover { 
-            background: rgba(var(--hap-rgb), 0.1); border-color: rgba(var(--hap-rgb), 0.3); 
-            transform: translateY(-4px) scale(1.02); box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            background: rgba(var(--hap-rgb), 0.08); border-color: rgba(var(--hap-rgb), 0.35); 
+            transform: translateY(-3px); box-shadow: 0 8px 24px rgba(var(--hap-rgb),0.15);
         }
-        .tgi-ico { font-size: 22px; display: block; margin-bottom: 6px; transition: 0.3s; }
-        .tgi:hover .tgi-ico { transform: scale(1.1); }
-        .tgi-lb { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.4); }
+        .tgi:active { transform: translateY(-1px) scale(0.97); }
+        .tgi-ico { font-size: 20px; display: block; margin-bottom: 7px; transition: transform 0.3s; line-height: 1; }
+        .tgi:hover .tgi-ico { transform: scale(1.15) translateY(-1px); }
+        .tgi-lb { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.45); letter-spacing: 0.02em; }
 
         .hbtn { 
-            width: 100%; padding: 14px; border-radius: 16px; border: none; cursor: pointer; 
-            font-size: 13px; font-weight: 700; margin-top: 10px; transition: 0.3s; outline: none;
+            width: 100%; padding: 13px 16px; border-radius: 16px; border: none; cursor: pointer; 
+            font-size: 13px; font-weight: 700; margin-top: 10px; transition: all 0.25s; outline: none;
+            letter-spacing: 0.01em;
         }
         .btn-main { 
-            background: var(--hap-main); color: #fff; 
-            box-shadow: 0 8px 16px rgba(var(--hap-rgb), 0.2);
+            background: linear-gradient(135deg, var(--hap-main), rgba(var(--hap-rgb),0.7)); color: #fff; 
+            box-shadow: 0 6px 20px rgba(var(--hap-rgb), 0.35);
         }
-        .btn-main:hover { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(var(--hap-rgb), 0.3); }
-        .btn-main:active { transform: translateY(0); }
+        .btn-main:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(var(--hap-rgb), 0.45); filter: brightness(1.1); }
+        .btn-main:active { transform: translateY(0); box-shadow: 0 4px 12px rgba(var(--hap-rgb), 0.3); }
 
         /* Mini Ball */
         #hap-mini { 
@@ -769,11 +772,13 @@
                             <canvas id="hap-chart" width="320" height="150" style="margin:0 auto; display:block;"></canvas>
                         </div>
                     </div>
-                    <div class="hpane" id="pane-sec" id="hap-sec-list">
-                        <div class="mc" style="text-align:center; padding:40px 20px;">
-                            <div style="font-size:32px; margin-bottom:15px;">🛡️</div>
-                            <div style="font-size:14px; color:#fff; font-weight:700; margin-bottom:8px;">点击下方标签开始扫描</div>
-                            <div style="font-size:11px; color:rgba(255,255,255,0.4);">系统将分析当前页面的隐私泄露风险</div>
+                    <div class="hpane" id="pane-sec">
+                        <div id="hap-sec-list">
+                            <div class="mc" style="text-align:center; padding:36px 20px;">
+                                <div style="font-size:36px; margin-bottom:14px; filter:drop-shadow(0 0 16px rgba(var(--hap-rgb),0.5));">🛡️</div>
+                                <div style="font-size:14px; color:#fff; font-weight:700; margin-bottom:8px;">切换到此页签即自动扫描</div>
+                                <div style="font-size:11px; color:rgba(255,255,255,0.4); line-height:1.6;">分析页面追踪器、广告容器与指纹风险</div>
+                            </div>
                         </div>
                     </div>
                     <div class="hpane" id="pane-data">
@@ -812,38 +817,42 @@
             CONFIG.THEME = next; GM_setValue('theme', next);
             Notify.show(`🎨 已切换至 ${next.toUpperCase()} 主题`, 'success');
         };
-        document.querySelectorAll('.htab').forEach(t => t.onclick = () => {
-            const tabs = document.querySelectorAll('.htab'), panes = document.querySelectorAll('.hpane');
+        const switchTab = (t) => {
             const targetPane = document.getElementById('pane-' + t.dataset.p);
-            if (targetPane.classList.contains('on')) return;
-
-            tabs.forEach(x => x.classList.remove('on'));
+            if (!targetPane || targetPane.classList.contains('on')) return;
+            document.querySelectorAll('.htab').forEach(x => x.classList.remove('on'));
             t.classList.add('on');
-
-            const currentPane = document.querySelector('.hpane.on');
-            if (currentPane) {
-                currentPane.classList.remove('on');
-                setTimeout(() => { currentPane.style.display = 'none'; }, 300); // 匹配 CSS transition
-            }
-
-            targetPane.style.display = 'block';
-            setTimeout(() => { targetPane.classList.add('on'); }, 10);
-            
+            document.querySelectorAll('.hpane').forEach(p => p.classList.remove('on'));
+            targetPane.classList.add('on');
             const ind = document.getElementById('hap-tab-ind');
             ind.style.width = t.offsetWidth + 'px';
             ind.style.transform = `translateX(${t.offsetLeft - 16}px)`;
             if (t.dataset.p === 'sec') Security.scan();
-        });
+        };
+        document.querySelectorAll('.htab').forEach(t => t.onclick = () => switchTab(t));
+        // 初始化指示器到默认选中页签
+        setTimeout(() => {
+            const active = document.querySelector('.htab.on');
+            if (active) {
+                const ind = document.getElementById('hap-tab-ind');
+                ind.style.transition = 'none';
+                ind.style.width = active.offsetWidth + 'px';
+                ind.style.transform = `translateX(${active.offsetLeft - 16}px)`;
+                setTimeout(() => { ind.style.transition = ''; }, 50);
+            }
+        }, 0);
         document.getElementById('hap-btn-upd').onclick = () => checkUpdate(true);
         const hd = document.getElementById('hap-header');
         hd.onmousedown = e => {
             if (e.target.closest('.h-btns')) return;
-            STATE.dragging=true; const r=el.root.getBoundingClientRect(); const ox=e.clientX-r.left, oy=e.clientY-r.top;
+            STATE.dragging = true;
+            const r = el.root.getBoundingClientRect();
+            const ox = e.clientX - r.left, oy = e.clientY - r.top;
             const move = ev => { if(STATE.dragging) { el.root.style.left=(ev.clientX-ox)+'px'; el.root.style.top=(ev.clientY-oy)+'px'; el.root.style.bottom='auto'; el.root.style.right='auto'; } };
             const up = () => { STATE.dragging=false; const rect=el.root.getBoundingClientRect(); GM_setValue('pos',{x:rect.left,y:rect.top,from:'top-left'}); document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); };
-            document.addEventListener('mousemove',move); document.addEventListener('mouseup',up);
+            document.addEventListener('mousemove', move);
+            document.addEventListener('mouseup', up);
         };
-        // 快捷键
         document.addEventListener('keydown', e => {
             if(e.altKey && e.code==='KeyQ') { el.root.classList.contains('min')?document.getElementById('hap-mini').click():document.getElementById('hap-btn-min').click(); }
             if(e.altKey && e.code==='KeyU') checkUpdate(true);
