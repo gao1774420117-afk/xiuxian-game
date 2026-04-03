@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         远程更新与实用工具助手
 // @namespace    http://tampermonkey.net/
-// @version      1.2.0
-// @description  支持远程 GitHub 更新、内置 UI 控制面板及多种实用功能
+// @version      1.3.0
+// @description  支持远程 GitHub 更新、内置自定义 UI 通知、实用小工具（及密码生成、链接采集）
 // @author       YourName
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
@@ -10,7 +10,6 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
-// @grant        GM_notification
 // @grant        GM_openInTab
 // @connect      raw.githubusercontent.com
 // @connect      github.com
@@ -25,199 +24,267 @@
     const CONFIG = {
         UPDATE_URL: 'https://raw.githubusercontent.com/gao1774420117-afk/xiuxian-game/main/remote-update-script.user.js',
         CURRENT_VERSION: GM_info.script.version,
-        AUTO_CHECK_INTERVAL: 1000 * 60 * 60 * 6, // 每6小时自动检查一次
-        IS_MINIMIZED: GM_getValue('is_minimized', false)
+        AUTO_CHECK_INTERVAL: 1000 * 60 * 60 * 6,
+        IS_MINIMIZED: GM_getValue('is_minimized', false),
+        THEME_COLOR: '#007bff'
     };
 
-    // --- 日志助手 ---
-    const Logger = {
-        info: (msg) => console.log(`%c[脚本助手]%c ${msg}`, 'color: #007bff; font-weight: bold', 'color: inherit'),
-        error: (msg) => console.error(`[脚本助手] 错误: ${msg}`)
+    // --- 自定义通知系统 (不调用系统原生) ---
+    const Notify = {
+        container: null,
+
+        init() {
+            if (this.container) return;
+            this.container = document.createElement('div');
+            this.container.id = 'helper-notify-container';
+            this.container.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                z-index: 1000000;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+                pointer-events: none;
+            `;
+            document.body.appendChild(this.container);
+        },
+
+        show(text, type = 'info', duration = 3500) {
+            this.init();
+            const toast = document.createElement('div');
+            const colors = {
+                info: '#007bff',
+                success: '#28a745',
+                warning: '#ffc107',
+                error: '#dc3545'
+            };
+            
+            toast.style.cssText = `
+                margin-bottom: 10px;
+                padding: 12px 20px;
+                background: rgba(255, 255, 255, 0.95);
+                color: #333;
+                border-left: 5px solid ${colors[type] || colors.info};
+                border-radius: 8px;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+                font-family: inherit;
+                font-size: 14px;
+                min-width: 150px;
+                max-width: 300px;
+                pointer-events: auto;
+                opacity: 0;
+                transform: translateX(50px);
+                transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+                backdrop-filter: blur(5px);
+            `;
+            toast.innerText = text;
+            
+            this.container.appendChild(toast);
+            
+            // 进场动画
+            setTimeout(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateX(0)';
+            }, 10);
+            
+            // 自动移除
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(50px)';
+                setTimeout(() => toast.remove(), 400);
+            }, duration);
+        }
     };
 
-    // --- 更新检测逻辑优化 ---
+    // --- 更新检测逻辑 ---
     function checkUpdate(isManual = false) {
         const lastCheck = GM_getValue('last_update_check', 0);
         const now = Date.now();
 
-        // 自动检查频率限制 (非手动模式下)
-        if (!isManual && (now - lastCheck < CONFIG.AUTO_CHECK_INTERVAL)) {
-            return; 
-        }
+        if (!isManual && (now - lastCheck < CONFIG.AUTO_CHECK_INTERVAL)) return;
 
-        if (isManual) {
-            GM_notification({
-                title: '检查更新中...',
-                text: '正在连接远程服务器，请稍候...',
-                timeout: 3000
-            });
-        }
+        if (isManual) Notify.show('正在检查云端版本...', 'info');
 
         GM_xmlhttpRequest({
             method: 'GET',
-            url: CONFIG.UPDATE_URL + '?t=' + now, // 添加时间戳防止缓存
-            timeout: 10000,
+            url: CONFIG.UPDATE_URL + '?t=' + now,
+            timeout: 8000,
             onload: function(response) {
                 GM_setValue('last_update_check', now);
-                
                 if (response.status === 200) {
-                    const remoteText = response.responseText;
-                    const remoteMatch = remoteText.match(/@version\s+([\d.]+)/);
-                    
-                    if (remoteMatch && remoteMatch[1]) {
-                        const remoteVersion = remoteMatch[1];
-                        if (isNewerVersion(remoteVersion, CONFIG.CURRENT_VERSION)) {
-                            handleNewVersion(remoteVersion);
+                    const remoteMatch = response.responseText.match(/@version\s+([\d.]+)/);
+                    if (remoteMatch) {
+                        const remoteV = remoteMatch[1];
+                        if (isNewerVersion(remoteV, CONFIG.CURRENT_VERSION)) {
+                            Notify.show(`发现新版本 v${remoteV}，正在为您准备更新...`, 'success');
+                            setTimeout(() => {
+                                if (confirm(`发现新版本: ${remoteV}\n当前版本: ${CONFIG.CURRENT_VERSION}\n\n是否打开下载页面？`)) {
+                                    GM_openInTab(CONFIG.UPDATE_URL, { active: true, insert: true });
+                                }
+                            }, 1000);
                         } else if (isManual) {
-                            alert(`当前已是最新版本! \n本地版本: ${CONFIG.CURRENT_VERSION}\n远程版本: ${remoteVersion}`);
+                            Notify.show('当前已是最新版本', 'success');
                         }
-                    } else {
-                        if (isManual) alert('无法解析远程版本号，请查看脚本源码格式是否正确。');
                     }
-                } else {
-                    Logger.error(`更新检查失败，状态码: ${response.status}`);
-                    if (isManual) alert('更新请求失败，请检查网络或 GitHub 仓库地址。');
+                } else if (isManual) {
+                    Notify.show('更新检查失败: 无法访问资源', 'error');
                 }
             },
-            onerror: () => {
-                Logger.error('网络错误，无法检查更新。');
-                if (isManual) alert('网络连接错误，请稍后再试。');
-            },
-            ontimeout: () => {
-                Logger.error('更新检查超时。');
-                if (isManual) alert('请求超时，请检查您的网络连接。');
-            }
+            onerror: () => isManual && Notify.show('网络连接异常', 'error'),
+            ontimeout: () => isManual && Notify.show('连接超时，请重试', 'warning')
         });
     }
 
-    function isNewerVersion(remote, current) {
-        const r = remote.split('.').map(Number);
-        const c = current.split('.').map(Number);
-        for (let i = 0; i < Math.max(r.length, c.length); i++) {
-            if ((r[i] || 0) > (c[i] || 0)) return true;
-            if ((r[i] || 0) < (c[i] || 0)) return false;
+    function isNewerVersion(r, c) {
+        const rV = r.split('.').map(Number);
+        const cV = c.split('.').map(Number);
+        for (let i = 0; i < Math.max(rV.length, cV.length); i++) {
+            if ((rV[i] || 0) > (cV[i] || 0)) return true;
+            if ((rV[i] || 0) < (cV[i] || 0)) return false;
         }
         return false;
     }
 
-    function handleNewVersion(version) {
-        const msg = `发现新版本: ${version}\n当前版本: ${CONFIG.CURRENT_VERSION}\n\n是否立即前往更新？`;
-        if (confirm(msg)) {
-            GM_openInTab(CONFIG.UPDATE_URL, { active: true, insert: true });
+    // --- 实用小工具逻辑 ---
+    const Tools = {
+        // 随机密码生成器
+        generatePassword(length = 16) {
+            const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+";
+            let retVal = "";
+            for (let i = 0, n = charset.length; i < length; ++i) {
+                retVal += charset.charAt(Math.floor(Math.random() * n));
+            }
+            navigator.clipboard.writeText(retVal).then(() => {
+                Notify.show(`生成成功并复制到剪贴板: ${retVal}`, 'success');
+            });
+        },
+        
+        // 链接采集器
+        collectLinks() {
+            const links = Array.from(document.querySelectorAll('a'))
+                .map(a => a.href)
+                .filter(url => url.startsWith('http'));
+            const uniqueLinks = [...new Set(links)];
+            if (uniqueLinks.length === 0) {
+                Notify.show('当前页面未发现有效链接', 'warning');
+                return;
+            }
+            const blob = new Blob([uniqueLinks.join('\n')], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `links_${location.hostname}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+            Notify.show(`采集完成！共提取 ${uniqueLinks.length} 个唯一链接`, 'success');
         }
-    }
+    };
 
-    // --- UI 界面实现 ---
+    // --- UI 界面 ---
     function createUI() {
         if (document.getElementById('helper-ui-root')) return;
 
-        const container = document.createElement('div');
-        container.id = 'helper-ui-root';
-        container.style.cssText = `
+        const root = document.createElement('div');
+        root.id = 'helper-ui-root';
+        root.style.cssText = `
             position: fixed;
-            bottom: 25px;
-            right: 25px;
-            width: 200px;
-            background: rgba(255, 255, 255, 0.92);
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            bottom: 30px;
+            right: 30px;
+            width: 220px;
+            background: rgba(255, 255, 255, 0.85);
+            border-radius: 16px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.18);
             z-index: 999999;
-            font-family: "Microsoft YaHei", sans-serif;
+            font-family: inherit;
             overflow: hidden;
             transition: all 0.4s ease;
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(0,123,255,0.2);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.3);
+            user-select: none;
         `;
 
         const header = document.createElement('div');
         header.style.cssText = `
-            padding: 12px 15px;
-            background: linear-gradient(135deg, #007bff, #0056b3);
+            padding: 14px 18px;
+            background: linear-gradient(135deg, #007bff, #00a2ff);
             color: white;
             cursor: pointer;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-weight: bold;
-            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
         `;
-        header.innerHTML = `<span>⚙️ 助手控制台</span><span id="helper-toggle-icon" style="font-size:18px;">${CONFIG.IS_MINIMIZED ? '+' : '−'}</span>`;
+        header.innerHTML = `<span>🛠️ 工具助手</span><span id="helper-toggle-icon">${CONFIG.IS_MINIMIZED ? '展开' : '折叠'}</span>`;
         
         const body = document.createElement('div');
         body.id = 'helper-ui-body';
-        body.style.cssText = `padding: 15px; display: ${CONFIG.IS_MINIMIZED ? 'none' : 'block'};`;
+        body.style.cssText = `padding: 12px 16px; display: ${CONFIG.IS_MINIMIZED ? 'none' : 'block'};`;
 
-        // 按钮构建器
-        const createButton = (text, onClick, color = '#007bff') => {
+        const section = (title) => {
+            const div = document.createElement('div');
+            div.style.cssText = `font-size: 11px; color: #666; margin: 8px 0 5px 2px; font-weight: bold;`;
+            div.innerText = title;
+            return div;
+        };
+
+        const createBtn = (text, onClick, color = '#007bff', variant = 'solid') => {
             const btn = document.createElement('button');
             btn.innerText = text;
             btn.onclick = onClick;
             btn.style.cssText = `
                 width: 100%;
-                margin-bottom: 10px;
+                margin-bottom: 8px;
                 padding: 10px;
-                background: ${color};
-                color: white;
-                border: none;
-                border-radius: 8px;
+                background: ${variant === 'solid' ? color : 'transparent'};
+                color: ${variant === 'solid' ? 'white' : color};
+                border: ${variant === 'solid' ? 'none' : `1px solid ${color}`};
+                border-radius: 10px;
                 cursor: pointer;
-                font-size: 13px;
-                font-weight: 500;
-                transition: transform 0.2s, box-shadow 0.2s;
+                font-size: 12px;
+                font-weight: 600;
+                transition: all 0.2s;
             `;
-            btn.onmouseenter = () => {
-                btn.style.transform = 'translateY(-2px)';
-                btn.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
-            };
-            btn.onmouseleave = () => {
-                btn.style.transform = 'translateY(0)';
-                btn.style.boxShadow = 'none';
-            };
+            btn.onmouseenter = () => btn.style.filter = 'brightness(1.1)';
+            btn.onmouseleave = () => btn.style.filter = 'none';
             return btn;
         };
 
-        const updateBtn = createButton('🚀 检查更新', () => checkUpdate(true));
-        const infoBtn = createButton('📝 版本信息', () => {
-            alert(`脚本名称: ${GM_info.script.name}\n当前版本: ${CONFIG.CURRENT_VERSION}\n运行域名: ${location.hostname}`);
-        }, '#28a745');
+        body.appendChild(section('📦 核心功能'));
+        body.appendChild(createBtn('🚀 检查更新', () => checkUpdate(true)));
         
-        const darkToggle = createButton('🌓 切换主题', () => {
-            const isDark = GM_getValue('dark_mode', false);
-            GM_setValue('dark_mode', !isDark);
-            applyDarkMode(!isDark);
-            GM_notification({ text: !isDark ? '已开启暗黑模式' : '已关闭暗黑模式', timeout: 1500 });
-        }, '#495057');
-
-        body.appendChild(updateBtn);
-        body.appendChild(infoBtn);
-        body.appendChild(darkToggle);
+        body.appendChild(section('🔧 实用工具'));
+        body.appendChild(createBtn('🔑 生成强密码', () => Tools.generatePassword(), '#28a745'));
+        body.appendChild(createBtn('🔗 采集页面链接', () => Tools.collectLinks(), '#17a2b8'));
+        
+        body.appendChild(section('🎨 界面设置'));
+        body.appendChild(createBtn('🌓 护眼模式开关', () => {
+            const isD = !GM_getValue('dark_mode', false);
+            GM_setValue('dark_mode', isD);
+            applyDarkMode(isD);
+            Notify.show(isD ? '护眼模式开启' : '护眼模式关闭', 'info');
+        }, '#4a5568', 'outline'));
 
         const footer = document.createElement('div');
-        footer.style.cssText = `
-            font-size: 11px;
-            color: #888;
-            text-align: center;
-            padding-top: 5px;
-            border-top: 1px solid #eee;
-        `;
-        footer.innerText = `当前版本 v${CONFIG.CURRENT_VERSION}`;
+        footer.style.cssText = `font-size: 10px; color: #999; text-align: center; margin-top: 10px;`;
+        footer.innerText = `v${CONFIG.CURRENT_VERSION} | Created with ❤️`;
         body.appendChild(footer);
 
-        container.appendChild(header);
-        container.appendChild(body);
-        document.body.appendChild(container);
+        root.appendChild(header);
+        root.appendChild(body);
+        document.body.appendChild(root);
 
-        // 折叠功能逻辑
         header.onclick = () => {
             const isMin = body.style.display === 'none';
             body.style.display = isMin ? 'block' : 'none';
-            document.getElementById('helper-toggle-icon').innerText = isMin ? '−' : '+';
-            container.style.width = isMin ? '200px' : '130px';
+            document.getElementById('helper-toggle-icon').innerText = isMin ? '折叠' : '展开';
+            root.style.width = isMin ? '220px' : '100px';
             GM_setValue('is_minimized', !isMin);
         };
 
         if (CONFIG.IS_MINIMIZED) {
-            container.style.width = '130px';
+            root.style.width = '100px';
         }
     }
 
@@ -229,8 +296,10 @@
                 style = document.createElement('style');
                 style.id = id;
                 style.innerHTML = `
-                    html { filter: invert(0.9) hue-rotate(180deg) !important; }
-                    img, video, iframe, canvas { filter: invert(1.1) hue-rotate(180deg) !important; }
+                    html { filter: invert(0.9) hue-rotate(180deg) !important; background: #000; }
+                    img, video, iframe, canvas, [style*="background-image"] { filter: invert(1.1) hue-rotate(180deg) !important; }
+                    #helper-ui-root { filter: invert(1.1) hue-rotate(180deg) !important; }
+                    #helper-notify-container { filter: invert(1.1) hue-rotate(180deg) !important; }
                 `;
                 document.head.appendChild(style);
             }
@@ -239,24 +308,12 @@
         }
     }
 
-    // --- 入口初始化 ---
     function init() {
         createUI();
         applyDarkMode(GM_getValue('dark_mode', false));
-        
-        // 注册油猴菜单
-        GM_registerMenuCommand('手动检查更新', () => checkUpdate(true));
-        GM_registerMenuCommand('重置控制台位置', () => {
-            GM_setValue('is_minimized', false);
-            location.reload();
-        });
-
-        // 启动时自动检查更新 (受时间间隔限制)
         checkUpdate(false);
-        Logger.info(`初始化完成，当前版本: ${CONFIG.CURRENT_VERSION}`);
     }
 
-    // 等待 DOM 加载
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
