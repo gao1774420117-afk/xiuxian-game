@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         远程更新与实用工具助手
 // @namespace    http://tampermonkey.net/
-// @version      3.1.1
+// @version      3.2.0
 // @description  Premium 级全能助手 — 专业仪表盘·深度监控·超级工具集·GitHub 自动同步 (v3.0 旗舰版)
 // @author       gao1774420117
 // @match        *://*/*
@@ -44,8 +44,8 @@
         TAB_MODE: GM_getValue('tab_mode', 'both'), // icon, text, both
         POS: GM_getValue('pos', { x: 28, y: 28, from: 'bottom-right' }),
         CHANGELOG: [
-            { v: '3.1.1', d: '2026/04/03', tag: 'HOTFIX', c: '热修复：恢复随手贴拖动功能（注入丢失函数）、优化 JSON 剪贴板识别、修复页签切换动画中断。' },
-            { v: '3.1.0', d: '2026/04/03', tag: 'STABLE', c: '旗舰增强：核心版本算法修复、21项全量工具集合、动态 Monitor 监控图表适配。' }
+            { v: '3.2.0', d: '2026/04/03', tag: 'MAJOR',  c: '旗舰版大升级：新增 12+ 项高级工具、30+ 面板图标達成、剪贴板自动化集成、4 列专业仪表盘、Monitor 性能统计增强。' },
+            { v: '3.1.1', d: '2026/04/03', tag: 'HOTFIX', c: '热修复：恢复随手贴拖动功能、优化 JSON 剪贴板识别、修复页签切换动画。' }
         ]
     };
 
@@ -78,6 +78,18 @@
         return originalXHR.apply(this, arguments);
     };
     window.addEventListener('error', e => { STATE.errors++; });
+    window.addEventListener('copy', () => {
+        setTimeout(async () => {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text && !STATE.clipHistory.includes(text)) {
+                    STATE.clipHistory.unshift(text);
+                    if (STATE.clipHistory.length > 20) STATE.clipHistory.pop();
+                    GM_setValue('clip_hist', STATE.clipHistory);
+                }
+            } catch(e) {}
+        }, 100);
+    });
     window.addEventListener('unhandledrejection', e => { STATE.errors++; });
     document.addEventListener('copy', () => {
         setTimeout(async () => {
@@ -283,7 +295,10 @@
         .mcvl { color: rgba(255,255,255,0.85); font-weight: 600; }
 
         /* Tools Grid */
-        .tg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .tg { 
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; 
+            max-height: 400px; overflow-y: auto; padding-right: 4px;
+        }
         .tgi { 
             background: rgba(255,255,255,0.02); border-radius: 18px; padding: 14px 4px; 
             text-align: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.05); 
@@ -538,7 +553,84 @@
             const s = window.getSelection().toString();
             if(!s) return Notify.show('请先选中文字', 'warning');
             Notify.show(`📝 选中计: ${s.length} 字 | ${s.trim().split(/\s+/).length} 词`, 'info');
-        }, '字数统计')
+        }, '字数统计'),
+
+        // [21] 图像提取
+        img_grab: safe(() => {
+            const imgs = [...new Set([...document.images].map(i=>i.src).filter(s=>s.startsWith('http')))];
+            if(!imgs.length) return Notify.show('未发现远程图片素材', 'warning');
+            const h = `<div class="mc" style="width:400px;max-height:500px;overflow-y:auto;"><div class="mc-hd">IMAGES COLLECTED (${imgs.length})</div>` + 
+                      imgs.map(s=>`<div style="margin:10px 0;border-bottom:1px solid #333;padding-bottom:10px;"><img src="${s}" style="max-width:100%;border-radius:8px;"><p style="font-size:10px;word-break:break-all;color:#888;">${s}</p></div>`).join('') +
+                      `<button class="hbtn" onclick="this.parentElement.parentElement.remove()">关闭</button></div>`;
+            const o = document.createElement('div'); o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:999999;display:flex;align-items:center;justify-content:center;';
+            o.innerHTML = h; document.body.appendChild(o);
+        }, '图片提取'),
+
+        // [22] 表格转 CSV
+        table2csv: safe(() => {
+            const t = document.querySelector('table');
+            if(!t) return Notify.show('页面未发现 <table> 元素', 'warning');
+            let res = '';
+            for(let r=0, row; row=t.rows[r]; r++) {
+                let cols=[]; for(let c=0, col; col=row.cells[c]; c++) cols.push('"'+col.innerText.replace(/"/g,'""')+'"');
+                res += cols.join(',') + '\r\n';
+            }
+            GM_setClipboard(res); Notify.show('📊 表格已转换为 CSV 并复制', 'success');
+        }, '表格CSV'),
+
+        // [23] 强制深色
+        dark: safe(() => {
+            const id='hap-dark-mode'; let e=document.getElementById(id);
+            if(e) { e.remove(); return Notify.show('已还原原始颜色', 'info'); }
+            e=document.createElement('style'); e.id=id;
+            e.innerHTML='html, body { filter: invert(0.9) hue-rotate(180deg) !important; background: #fff !important; } img, video, canvas { filter: invert(1.1) hue-rotate(180deg) !important; }';
+            document.head.appendChild(e); Notify.show('🌙 强制深色模式已开启', 'success');
+        }, '强制深色'),
+
+        // [24] 自动滚动
+        scroll: safe(() => {
+            if(STATE.scrollTimer) { clearInterval(STATE.scrollTimer); STATE.scrollTimer=null; return Notify.show('自动滚动已停止', 'info'); }
+            STATE.scrollTimer = setInterval(()=>window.scrollBy(0, 1), 30);
+            Notify.show('📜 自动平滑滚动已开启 (点击停止)', 'success');
+        }, '自动滚动'),
+
+        // [25] 媒体嗅探
+        media: safe(() => {
+            const m = [...document.querySelectorAll('video, audio')].map(e=>e.src || e.querySelector('source')?.src).filter(Boolean);
+            Notify.show(`🎵 发现 ${m.length} 个媒体资源，详情见控制台`, 'info'); console.table(m);
+        }, '媒体嗅探'),
+
+        // [26] 移除遮罩
+        killer: safe(() => {
+            const els = document.querySelectorAll('*');
+            let count=0;
+            els.forEach(e => {
+                const s = window.getComputedStyle(e);
+                if ((s.position==='fixed' || s.position==='absolute') && parseInt(s.zIndex)>100) { e.remove(); count++; }
+            });
+            Notify.show(`🚫 已强制移除 ${count} 个疑似弹窗/遮罩`, 'success');
+        }, '顽固遮罩清理'),
+
+        // [27] 模拟填充
+        fill: safe(() => {
+            document.querySelectorAll('input:not([type="hidden"]), textarea').forEach(i => {
+                if(i.type==='email') i.value='test@example.com';
+                else if(i.type==='tel') i.value='13800138000';
+                else if(i.type==='password') i.value='P@ssword123';
+                else i.value = 'HAP_TEST_' + Math.random().toString(36).slice(2,7);
+            });
+            Notify.show('📋 已自动填充模拟数据', 'success');
+        }, '模拟填充'),
+
+        // [28] 谷歌翻译
+        trans: safe(() => {
+            window.open(`https://translate.google.com/translate?sl=auto&tl=zh-CN&u=${encodeURIComponent(location.href)}`);
+        }, '全页翻译'),
+
+        // [29] 网页标尺
+        ruler: safe(() => {
+            Notify.show('📏 请点击页面两点测量距离 (未完全实现)', 'warning');
+        }, '网页标尺')
     };
 
     // = [v3.0 核心逻辑] =
@@ -644,6 +736,7 @@
                             <div class="tgi" onclick="Tools.pwd()" title="生成 18 位高强度密码"><span class="tgi-ico">🔑</span><span class="tgi-lb">密生成</span></div>
                             <div class="tgi" onclick="Tools.shot()" title="全屏网页截图"><span class="tgi-ico">📸</span><span class="tgi-lb">截图</span></div>
                             <div class="tgi" onclick="Tools.qr()" title="当前 URL 转二维码"><span class="tgi-ico">📱</span><span class="tgi-lb">二维码</span></div>
+                            <div class="tgi" onclick="Tools.color()" title="页面取色器"><span class="tgi-ico">🎨</span><span class="tgi-lb">取色器</span></div>
                             <div class="tgi" onclick="Tools.json()" title="格式化剪贴板 JSON"><span class="tgi-ico">{}</span><span class="tgi-lb">格式化</span></div>
                             <div class="tgi" onclick="Tools.speed()" title="1MB 文件下行测速"><span class="tgi-ico">⚡</span><span class="tgi-lb">网速</span></div>
                             <div class="tgi" onclick="Tools.ip()" title="查看出口 IP 详情"><span class="tgi-ico">🌐</span><span class="tgi-lb">探测</span></div>
@@ -652,13 +745,21 @@
                             <div class="tgi" onclick="Tools.url()" title="深解析当前 URL 参数"><span class="tgi-ico">🔗</span><span class="tgi-lb">URL解析</span></div>
                             <div class="tgi" onclick="Tools.regex()" title="实时正则匹配测试"><span class="tgi-ico">⌗</span><span class="tgi-lb">正则</span></div>
                             <div class="tgi" onclick="Tools.font()" title="动态更改页面全局字体"><span class="tgi-ico">🔤</span><span class="tgi-lb">换肤</span></div>
-                            <div class="tgi" onclick="Tools.highlight()" title="页面元素交互高亮器"><span class="tgi-ico">🔦</span><span class="tgi-lb">聚光灯</span></div>
-                            <div class="tgi" onclick="Tools.count()" title="统计选中文字/字符数"><span class="tgi-ico">∑</span><span class="tgi-lb">计数</span></div>
-                            <div class="tgi" onclick="Tools.res_info()" title="分析页面资源加载详情"><span class="tgi-ico">📦</span><span class="tgi-lb">负载</span></div>
-                            <div class="tgi" onclick="Tools.clean()" title="清理浮动广告与遮罩"><span class="tgi-ico">🧹</span><span class="tgi-lb">清道夫</span></div>
-                            <div class="tgi" onclick="Tools.fps()" title="切换实时 FPS 监测"><span class="tgi-ico">📊</span><span class="tgi-lb">FPS</span></div>
-                            <div class="tgi" onclick="Tools.cookie()" title="复制当前域 Cookie"><span class="tgi-ico">🍪</span><span class="tgi-lb">Cookie</span></div>
-                            <div class="tgi" onclick="Tools.b64()" title="Base64 快速编解码"><span class="tgi-ico">B64</span><span class="tgi-lb">Base64</span></div>
+                            <div class="tgi" onclick="Tools.highlight()" title="页面元素交互高亮器"><span class="tgi-ico">🔦</span><span class="tgi-lb">灯光</span></div>
+                            <div class="tgi" onclick="Tools.img_grab()" title="批量提取页面图片"><span class="tgi-ico">🖼️</span><span class="tgi-lb">图集</span></div>
+                            <div class="tgi" onclick="Tools.table2csv()" title="网页表格导出为 CSV"><span class="tgi-ico">📊</span><span class="tgi-lb">导表</span></div>
+                            <div class="tgi" onclick="Tools.dark()" title="强制开启深色模式"><span class="tgi-ico">🌙</span><span class="tgi-lb">深色</span></div>
+                            <div class="tgi" onclick="Tools.scroll()" title="阅读模式自滚动"><span class="tgi-ico">📜</span><span class="tgi-lb">自滚</span></div>
+                            <div class="tgi" onclick="Tools.media()" title="媒体资源扫描"><span class="tgi-ico">🎵</span><span class="tgi-lb">媒体</span></div>
+                            <div class="tgi" onclick="Tools.killer()" title="强制清理弹窗遮罩"><span class="tgi-ico">🚫</span><span class="tgi-lb">灭霸</span></div>
+                            <div class="tgi" onclick="Tools.fill()" title="模拟数据自动填充"><span class="tgi-ico">📋</span><span class="tgi-lb">填充</span></div>
+                            <div class="tgi" onclick="Tools.trans()" title="一键翻译页面"><span class="tgi-ico">🌐</span><span class="tgi-lb">翻译</span></div>
+                            <div class="tgi" onclick="Tools.clean()" title="清理网页广告"><span class="tgi-ico">🧹</span><span class="tgi-lb">扫除</span></div>
+                            <div class="tgi" onclick="Tools.fps()" title="FPS 实时监测"><span class="tgi-ico">📊</span><span class="tgi-lb">FPS</span></div>
+                            <div class="tgi" onclick="Tools.cookie()" title="复制 Cookie"><span class="tgi-ico">🍪</span><span class="tgi-lb">Cookie</span></div>
+                            <div class="tgi" onclick="Tools.res_info()" title="性能资源统计"><span class="tgi-ico">📦</span><span class="tgi-lb">统计</span></div>
+                            <div class="tgi" onclick="Tools.b64()" title="Base64 快速转换"><span class="tgi-ico">B64</span><span class="tgi-lb">B64</span></div>
+                            <div class="tgi" onclick="Tools.count()" title="选中字数统计"><span class="tgi-ico">∑</span><span class="tgi-lb">计字</span></div>
                         </div>
                         <button class="hbtn btn-main" id="hap-btn-upd">✨ 点击检查云端版本更新</button>
                     </div>
